@@ -44,28 +44,20 @@ class TaskCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            task.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              decoration: doneToday
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                              color: doneToday
-                                  ? scheme.onSurface.withValues(alpha: 0.6)
-                                  : scheme.onSurface,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _ImportanceChip(
-                          importance: task.importance,
-                          onTap: onEditImportance,
-                        ),
-                      ],
+                    // The title takes the full width on its own line. Putting
+                    // the importance chip next to it would squeeze the title
+                    // into a narrow column and break the words apart.
+                    Text(
+                      task.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        decoration: doneToday
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        color: doneToday
+                            ? scheme.onSurface.withValues(alpha: 0.6)
+                            : scheme.onSurface,
+                      ),
                     ),
                     if (task.description.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -77,39 +69,59 @@ class TaskCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 6),
-                    Row(
+                    // A Wrap instead of a Row: the metadata can wrap onto a
+                    // second line on narrow screens instead of overflowing.
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        FlameLogo(
-                          size: 16,
-                          color: streak > 0
-                              ? StreaksTheme.flameOrange
-                              : scheme.onSurfaceVariant,
+                        _ImportanceChip(
+                          importance: task.importance,
+                          onTap: onEditImportance,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          streak == 1 ? '1 día' : '$streak días',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: streak > 0
-                                ? StreaksTheme.flameOrange
-                                : scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (task.reminderHour != null) ...[
-                          const SizedBox(width: 12),
-                          Icon(
-                            Icons.notifications_active_outlined,
-                            size: 14,
-                            color: scheme.onSurface.withValues(alpha: 0.5),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatTime(task.reminderHour!, task.reminderMinute!),
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: scheme.onSurface.withValues(alpha: 0.5),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FlameLogo(
+                              size: 16,
+                              color: streak > 0
+                                  ? StreaksTheme.flameOrange
+                                  : scheme.onSurfaceVariant,
                             ),
+                            const SizedBox(width: 6),
+                            Text(
+                              streak == 1 ? '1 día' : '$streak días',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: streak > 0
+                                    ? StreaksTheme.flameOrange
+                                    : scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (task.reminderHour != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.notifications_active_outlined,
+                                size: 14,
+                                color: scheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatTime(
+                                  task.reminderHour!,
+                                  task.reminderMinute!,
+                                ),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: scheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
                       ],
                     ),
                   ],

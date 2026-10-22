@@ -76,7 +76,7 @@ void main() {
 
     // The version the previous release stamped on the database.
     db.execute('PRAGMA user_version = 1');
-    db.dispose();
+    db.close();
     return file;
   }
 
@@ -122,6 +122,9 @@ void main() {
     final file = createV1Database();
 
     final db = AppDatabase(NativeDatabase(file), false);
+    // The connection is opened lazily, so a query is needed to actually run
+    // the migration. Reading `schemaVersion` alone does not open the file.
+    await TaskDao(db).loadTasksWithStreaks();
     expect(db.schemaVersion, 2);
     await db.close();
 
@@ -131,7 +134,7 @@ void main() {
       check.select('PRAGMA user_version').first.values.first,
       2,
     );
-    check.dispose();
+    check.close();
   });
 
   test('the migrated database can still be reopened', () async {

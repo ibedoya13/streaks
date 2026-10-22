@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../data/database.dart';
 import '../data/task_dao.dart';
 import '../data/task_importance.dart';
+import '../notifications/app_lifecycle_observer.dart';
+import '../notifications/notification_service.dart';
+import '../notifications/reminder_scheduler.dart';
 import '../theme.dart';
 import '../widgets/add_task_sheet.dart';
 import '../widgets/flame_logo.dart';
@@ -15,9 +18,17 @@ import '../widgets/task_card.dart';
 /// (toggling a completion, adding or deleting a task) refreshes the UI
 /// automatically.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.database});
+  const HomeScreen({
+    super.key,
+    required this.database,
+    this.notifications,
+  });
 
   final AppDatabase database;
+
+  /// The service used to schedule the reminders. Optional so the screen can
+  /// be rendered in tests without touching the notification plugin.
+  final NotificationService? notifications;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -27,6 +38,54 @@ class _HomeScreenState extends State<HomeScreen> {
   late final TaskDao _dao = TaskDao(widget.database);
   late final Stream<List<TaskWithStreaks>> _tasks =
       _dao.watchTasksWithStreaks();
+
+  late final NotificationService _notifications =
+      widget.notifications ?? NotificationService();
+
+  late final ReminderScheduler _scheduler = ReminderScheduler(
+    service: _notifications,
+    tasks: () => _dao.loadTasksWithStreaks(),
+  );
+
+  late final AppLifecycleObserver _lifecycleObserver = AppLifecycleObserver(
+    onResumed: _onResumed,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    _bootstrapNotifications();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    super.dispose();
+  }
+
+  /// Asks for the notification permission and schedules the reminders.
+  Future<void> _bootstrapNotifications() async {
+    try {
+      await _notifications.initialize();
+      final granted = await _notifications.requestPermission();
+      if (granted) await _scheduler.rescheduleAll();
+    } on Object {
+      // Notifications are a nice-to-have; the app must work without them.
+    }
+  }
+
+  /// Re-schedules the reminders when the app comes back to the foreground,
+  /// so a critical task keeps nagging and a completed one stops.
+  Future<void> _onResumed() async {
+    try {
+      if (_notifications.hasPermission) {
+        await _scheduler.rescheduleAll();
+      }
+    } on Object {
+      // Ignore failures, the reminders are re-scheduled on the next resume.
+    }
+  }
 
   Future<void> _addTask({
     required String title,
@@ -42,14 +101,28 @@ class _HomeScreenState extends State<HomeScreen> {
       reminderHour: reminderHour,
       reminderMinute: reminderMinute,
     );
+    await _reschedule();
   }
 
   Future<void> _toggleTask(int taskId) async {
     await _dao.toggleCompletion(taskId, DateTime.now());
+    await _reschedule();
   }
 
   Future<void> _deleteTask(int taskId) async {
     await _dao.deleteTask(taskId);
+    await _reschedule();
+  }
+
+  /// Re-schedules the reminders after a change in the tasks.
+  Future<void> _reschedule() async {
+    try {
+      if (_notifications.hasPermission) {
+        await _scheduler.rescheduleAll();
+      }
+    } on Object {
+      // Ignore failures; the next resume re-schedules.
+    }
   }
 
   Future<void> _openAddSheet() async {
@@ -125,6 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (selected != null && selected != entry.task.importance) {
       await _dao.updateImportance(entry.task.id, selected);
+      await _reschedule();
     }
   }
 

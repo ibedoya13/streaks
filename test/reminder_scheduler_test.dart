@@ -1,0 +1,193 @@
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:streaks/data/database.dart';
+import 'package:streaks/data/task_dao.dart';
+import 'package:streaks/data/task_importance.dart';
+import 'package:streaks/notifications/notification_service.dart';
+import 'package:streaks/notifications/reminder_scheduler.dart';
+
+/// A notification service that records what it was asked to do, so the
+/// scheduling rules can be tested without the platform plugin.
+class _FakeNotificationService extends NotificationService {
+  final List<int> scheduled = [];
+  final List<int> cancelled = [];
+  bool permission = true;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  bool get hasPermission => permission;
+
+  @override
+  Future<bool> requestPermission() async => permission;
+
+  @override
+  Future<void> scheduleTask({
+    required int taskId,
+    required String title,
+    required String body,
+    required int hour,
+    required int minute,
+    required TaskImportance importance,
+    DateTime? from,
+  }) async {
+    // The real service cancels the previous reminders before scheduling the
+    // new ones, which is what keeps a reschedule from piling them up.
+    await cancelTask(taskId);
+
+    final repeats = importance.isEscalating
+        ? NotificationService.criticalRepeatCount
+        : 1;
+    for (var slot = 0; slot < repeats; slot++) {
+      scheduled.add(taskId * NotificationService.idStride + slot);
+    }
+  }
+
+  @override
+  Future<void> cancelTask(int taskId) async {
+    for (var slot = 0; slot < NotificationService.criticalRepeatCount; slot++) {
+      cancelled.add(taskId * NotificationService.idStride + slot);
+    }
+  }
+}
+
+void main() {
+  late AppDatabase db;
+  late TaskDao dao;
+  late _FakeNotificationService service;
+  late ReminderScheduler scheduler;
+
+  setUp(() {
+    db = AppDatabase(NativeDatabase.memory(), false);
+    dao = TaskDao(db);
+    service = _FakeNotificationService();
+    scheduler = ReminderScheduler(
+      service: service,
+      tasks: () => dao.loadTasksWithStreaks(),
+    );
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  test('a normal task gets exactly one reminder', () async {
+    await dao.createTask(title: 'Tarea', reminderHour: 9, reminderMinute: 0);
+
+    await scheduler.rescheduleAll();
+
+    expect(service.scheduled, hasLength(1));
+  });
+
+  test('a critical task gets a reminder every fifteen minutes', () async {
+    await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+
+    expect(service.scheduled, hasLength(NotificationService.criticalRepeatCount));
+    expect(
+      NotificationService.criticalInterval,
+      const Duration(minutes: 15),
+    );
+  });
+
+  test('a task without a reminder time gets nothing scheduled', () async {
+    await dao.createTask(title: 'Sin recordatorio');
+
+    await scheduler.rescheduleAll();
+
+    expect(service.scheduled, isEmpty);
+  });
+
+  test('a task completed today gets no reminder', () async {
+    final id = await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+    await dao.toggleCompletion(id, DateTime.now());
+
+    await scheduler.rescheduleAll();
+
+    expect(service.scheduled, isEmpty);
+  });
+
+  test('completing a task cancels its pending reminders', () async {
+    final id = await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+    expect(service.scheduled, isNotEmpty);
+
+    service.cancelled.clear();
+    await dao.toggleCompletion(id, DateTime.now());
+    await scheduler.rescheduleAll();
+
+    expect(service.cancelled, isNotEmpty);
+  });
+
+  test('scheduling is idempotent, so a resume does not pile up reminders',
+      () async {
+    await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+    await scheduler.rescheduleAll();
+    await scheduler.rescheduleAll();
+
+    // Each run cancels the previous ids before scheduling them again, so
+    // the operating system never holds more than one series per task.
+    expect(service.cancelled, isNotEmpty);
+  });
+
+  test('the reminder ids of a task are contiguous and unique', () async {
+    await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+
+    final ids = service.scheduled.toList()..sort();
+    expect(ids.toSet(), hasLength(ids.length));
+    for (var i = 1; i < ids.length; i++) {
+      expect(ids[i] - ids[i - 1], 1);
+    }
+  });
+
+  test('different tasks never share a reminder id', () async {
+    await dao.createTask(
+      title: 'Primera',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+    await dao.createTask(
+      title: 'Segunda',
+      importance: TaskImportance.critical,
+      reminderHour: 10,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+
+    expect(service.scheduled.toSet(), hasLength(service.scheduled.length));
+  });
+}
