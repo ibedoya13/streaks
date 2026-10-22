@@ -61,93 +61,102 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
         top: 16,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+      // The sheet has to be scrollable: with a tall keyboard the space left
+      // for it can be smaller than the content, and a plain column would
+      // overflow instead of scrolling.
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Nueva tarea',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
+              const SizedBox(height: 18),
+              Text(
+                'Nueva tarea',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _titleController,
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de la tarea',
-                hintText: 'Ej. Tomar 2 litros de agua',
-                prefixIcon: Icon(Icons.task_alt),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _titleController,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de la tarea',
+                  hintText: 'Ej. Tomar 2 litros de agua',
+                  prefixIcon: Icon(Icons.task_alt),
+                ),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Escribe un nombre para la tarea'
+                    : null,
               ),
-              validator: (value) => (value == null || value.trim().isEmpty)
-                  ? 'Escribe un nombre para la tarea'
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _descriptionController,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Descripción (opcional)',
-                prefixIcon: Icon(Icons.notes),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _descriptionController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Descripción (opcional)',
+                  prefixIcon: Icon(Icons.notes),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const SizedBox(height: 16),
-            Text(
-              'Importancia',
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurface,
+              const SizedBox(height: 8),
+              const SizedBox(height: 16),
+              Text(
+                'Importancia',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            ImportanceSelector(
-              value: _importance,
-              onChanged: (value) => setState(() => _importance = value),
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              value: _reminderEnabled,
-              onChanged: (value) => setState(() => _reminderEnabled = value),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Recordatorio diario'),
-              subtitle: const Text('Recibirás un aviso aunque no abras la app'),
-            ),
-            if (_reminderEnabled)
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final picked = await showTimePicker(
-                    context: context,
-                    initialTime: _reminderTime,
-                  );
-                  if (picked != null) setState(() => _reminderTime = picked);
-                },
-                icon: const Icon(Icons.schedule),
-                label: Text('Hora del aviso: ${_reminderTime.format(context)}'),
+              const SizedBox(height: 8),
+              ImportanceSelector(
+                value: _importance,
+                onChanged: (value) => setState(() => _importance = value),
               ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _submit,
-              icon: const Icon(Icons.add),
-              label: const Text('Crear tarea'),
-            ),
-          ],
+              const SizedBox(height: 16),
+              SwitchListTile(
+                value: _reminderEnabled,
+                onChanged: (value) => setState(() => _reminderEnabled = value),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Recordatorio diario'),
+                subtitle: const Text(
+                  'Recibirás un aviso aunque no abras la app',
+                ),
+              ),
+              if (_reminderEnabled)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime: _reminderTime,
+                    );
+                    if (picked != null) setState(() => _reminderTime = picked);
+                  },
+                  icon: const Icon(Icons.schedule),
+                  label: Text(
+                    'Hora del aviso: ${_reminderTime.format(context)}',
+                  ),
+                ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _submit,
+                icon: const Icon(Icons.add),
+                label: const Text('Crear tarea'),
+              ),
+            ],
+          ),
         ),
       ),
     );

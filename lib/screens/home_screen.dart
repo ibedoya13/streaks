@@ -18,11 +18,7 @@ import '../widgets/task_card.dart';
 /// (toggling a completion, adding or deleting a task) refreshes the UI
 /// automatically.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({
-    super.key,
-    required this.database,
-    this.notifications,
-  });
+  const HomeScreen({super.key, required this.database, this.notifications});
 
   final AppDatabase database;
 
@@ -36,8 +32,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final TaskDao _dao = TaskDao(widget.database);
-  late final Stream<List<TaskWithStreaks>> _tasks =
-      _dao.watchTasksWithStreaks();
+  late final Stream<List<TaskWithStreaks>> _tasks = _dao
+      .watchTasksWithStreaks();
 
   late final NotificationService _notifications =
       widget.notifications ?? NotificationService();
@@ -151,44 +147,47 @@ class _HomeScreenState extends State<HomeScreen> {
                 top: 16,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
+              // Scrollable for the same reason as the new-task sheet: with
+              // a tall keyboard the available height can be too small.
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Importancia',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: 18),
+                    Text(
+                      'Importancia',
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    entry.task.title,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.task.title,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  ImportanceSelector(
-                    value: current,
-                    onChanged: (value) {
-                      setSheetState(() => current = value);
-                      Navigator.of(sheetContext).pop(value);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                ],
+                    const SizedBox(height: 16),
+                    ImportanceSelector(
+                      value: current,
+                      onChanged: (value) {
+                        setSheetState(() => current = value);
+                        Navigator.of(sheetContext).pop(value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
             );
           },
@@ -207,11 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Row(
-          children: [
-            FlameLogo(size: 30),
-            SizedBox(width: 10),
-            Text('Streaks'),
-          ],
+          children: [FlameLogo(size: 30), SizedBox(width: 10), Text('Streaks')],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -365,11 +360,7 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 12),
             Text(
               'No se pudo cargar la base de datos',

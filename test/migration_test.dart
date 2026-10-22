@@ -130,10 +130,7 @@ void main() {
 
     // Verify the version was actually written to the file.
     final check = sqlite3.open(file.path);
-    expect(
-      check.select('PRAGMA user_version').first.values.first,
-      2,
-    );
+    expect(check.select('PRAGMA user_version').first.values.first, 2);
     check.close();
   });
 

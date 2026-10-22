@@ -155,18 +155,15 @@ void main() {
 
     final tasks = await dao.loadTasksWithStreaks();
     expect(tasks.first.task.importance, TaskImportance.normal);
-    expect(tasks.first.task.importance.isEscalating, isFalse);
+    expect(tasks.first.task.importance.repeats, isFalse);
   });
 
   test('a task can be created as critical', () async {
-    await dao.createTask(
-      title: 'Tarea',
-      importance: TaskImportance.critical,
-    );
+    await dao.createTask(title: 'Tarea', importance: TaskImportance.critical);
 
     final tasks = await dao.loadTasksWithStreaks();
     expect(tasks.first.task.importance, TaskImportance.critical);
-    expect(tasks.first.task.importance.isEscalating, isTrue);
+    expect(tasks.first.task.importance.repeats, isTrue);
   });
 
   test('the importance of a task can be changed', () async {
@@ -201,7 +198,27 @@ void main() {
   test('an unknown stored importance falls back to normal', () {
     expect(TaskImportance.fromDb(0), TaskImportance.normal);
     expect(TaskImportance.fromDb(1), TaskImportance.critical);
+    expect(TaskImportance.fromDb(2), TaskImportance.important);
     // A value written by a future version of the app must not crash.
     expect(TaskImportance.fromDb(99), TaskImportance.normal);
+  });
+
+  test('the stored values of the levels never change', () {
+    // A task stored before the `important` level existed keeps its meaning:
+    // 0 has always been normal and 1 has always been critical.
+    expect(TaskImportance.normal.dbValue, 0);
+    expect(TaskImportance.critical.dbValue, 1);
+    expect(TaskImportance.important.dbValue, 2);
+  });
+
+  test('a task stored as critical is still critical', () async {
+    // Simulates a row written before the `important` level was added.
+    final id = await dao.createTask(title: 'Tarea');
+    await db.customStatement(
+      'UPDATE streak_tasks SET importance = 1 WHERE id = $id',
+    );
+
+    final tasks = await dao.loadTasksWithStreaks();
+    expect(tasks.first.task.importance, TaskImportance.critical);
   });
 }

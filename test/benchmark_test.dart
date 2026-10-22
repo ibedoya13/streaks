@@ -137,8 +137,7 @@ FROM streak_tasks t WHERE t.is_archived = 0 ORDER BY t.sort_order
     final bestA = a['best_streak'] as int;
     final lastDay = b['last_day'] as String?;
     final lastLen = b['last_len'] as int;
-    final alive = lastDay != null &&
-        (lastDay == today || lastDay == yesterday);
+    final alive = lastDay != null && (lastDay == today || lastDay == yesterday);
     final currentB = alive ? lastLen : 0;
     if (currentA != currentB || bestA != b['best_streak'] as int) {
       mismatches.add(
@@ -150,9 +149,15 @@ FROM streak_tasks t WHERE t.is_archived = 0 ORDER BY t.sort_order
 
   print('');
   print(label);
-  print('  A) global CTE         : ${(swA.elapsedMicroseconds / iterations / 1000).toStringAsFixed(2)} ms/query');
-  print('  B) per-task correlated: ${(swB.elapsedMicroseconds / iterations / 1000).toStringAsFixed(2)} ms/query');
-  print('  agreement: ${mismatches.isEmpty ? 'OK (all ${rowsA.length} tasks match)' : mismatches.join('; ')}');
+  print(
+    '  A) global CTE         : ${(swA.elapsedMicroseconds / iterations / 1000).toStringAsFixed(2)} ms/query',
+  );
+  print(
+    '  B) per-task correlated: ${(swB.elapsedMicroseconds / iterations / 1000).toStringAsFixed(2)} ms/query',
+  );
+  print(
+    '  agreement: ${mismatches.isEmpty ? 'OK (all ${rowsA.length} tasks match)' : mismatches.join('; ')}',
+  );
 
   raw.close();
 }

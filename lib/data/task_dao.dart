@@ -56,9 +56,10 @@ class TaskDao {
     final today = dayKey(DateTime.now());
     final yesterday = dayKey(DateTime.now().subtract(const Duration(days: 1)));
 
-    return _streakSelect(today, yesterday)
-        .watch()
-        .map((rows) => rows.map(_mapRow).toList(growable: false));
+    return _streakSelect(
+      today,
+      yesterday,
+    ).watch().map((rows) => rows.map(_mapRow).toList(growable: false));
   }
 
   /// Loads all active tasks with their streak figures, once.
@@ -165,22 +166,25 @@ ORDER BY t.sort_order ASC, t.id ASC
     int? reminderHour,
     int? reminderMinute,
   }) async {
-    final last = await (db.select(db.streakTasks)
-          ..orderBy([(t) => OrderingTerm.desc(t.sortOrder)])
-          ..limit(1))
-        .getSingleOrNull();
+    final last =
+        await (db.select(db.streakTasks)
+              ..orderBy([(t) => OrderingTerm.desc(t.sortOrder)])
+              ..limit(1))
+            .getSingleOrNull();
     final nextOrder = (last?.sortOrder ?? 0) + 1;
-    return db.into(db.streakTasks).insert(
-      StreakTasksCompanion.insert(
-        title: title,
-        description: Value(description),
-        importance: Value(importance),
-        reminderHour: Value(reminderHour),
-        reminderMinute: Value(reminderMinute),
-        createdAt: DateTime.now(),
-        sortOrder: Value(nextOrder),
-      ),
-    );
+    return db
+        .into(db.streakTasks)
+        .insert(
+          StreakTasksCompanion.insert(
+            title: title,
+            description: Value(description),
+            importance: Value(importance),
+            reminderHour: Value(reminderHour),
+            reminderMinute: Value(reminderMinute),
+            createdAt: DateTime.now(),
+            sortOrder: Value(nextOrder),
+          ),
+        );
   }
 
   /// Changes the importance level of a task.
@@ -193,22 +197,25 @@ ORDER BY t.sort_order ASC, t.id ASC
   /// Marks a day as completed, or un-completes it if it was already done.
   Future<void> toggleCompletion(int taskId, DateTime day) async {
     final key = dayKey(day);
-    final existing = await (db.select(db.completions)
-          ..where((c) => c.taskId.equals(taskId) & c.day.equals(key)))
-        .getSingleOrNull();
+    final existing =
+        await (db.select(db.completions)
+              ..where((c) => c.taskId.equals(taskId) & c.day.equals(key)))
+            .getSingleOrNull();
 
     if (existing != null) {
-      await (db.delete(db.completions)
-            ..where((c) => c.id.equals(existing.id)))
-          .go();
+      await (db.delete(
+        db.completions,
+      )..where((c) => c.id.equals(existing.id))).go();
     } else {
-      await db.into(db.completions).insert(
-        CompletionsCompanion.insert(
-          taskId: taskId,
-          day: key,
-          completedAt: DateTime.now(),
-        ),
-      );
+      await db
+          .into(db.completions)
+          .insert(
+            CompletionsCompanion.insert(
+              taskId: taskId,
+              day: key,
+              completedAt: DateTime.now(),
+            ),
+          );
     }
   }
 

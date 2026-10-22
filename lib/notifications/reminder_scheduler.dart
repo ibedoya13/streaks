@@ -12,10 +12,7 @@ import 'notification_service.dart';
 ///    until the user marks it as done;
 ///  * a task that is already done for today gets no reminder at all.
 class ReminderScheduler {
-  ReminderScheduler({
-    required this.service,
-    required this.tasks,
-  });
+  ReminderScheduler({required this.service, required this.tasks});
 
   final NotificationService service;
 
@@ -32,6 +29,19 @@ class ReminderScheduler {
     if (!service.hasPermission) return;
 
     final current = await tasks();
+    final liveTaskIds = current.map((entry) => entry.task.id).toSet();
+
+    // Cancel the reminders of tasks that no longer exist. They are not in
+    // the current list, so they would otherwise keep firing forever.
+    final pending = await service.pending();
+    final orphans = <int>{};
+    for (final request in pending) {
+      final taskId = request.id ~/ NotificationService.idStride;
+      if (!liveTaskIds.contains(taskId)) orphans.add(taskId);
+    }
+    for (final taskId in orphans) {
+      await service.cancelTask(taskId);
+    }
 
     // Remove the reminders of tasks that no longer need them.
     final keep = <int>{};
@@ -79,11 +89,17 @@ class ReminderScheduler {
   /// The text shown in the notification.
   String _bodyFor(TaskWithStreaks entry) {
     final task = entry.task;
-    if (task.importance.isEscalating) {
-      final streak = entry.currentStreak;
+    final streak = entry.currentStreak;
+
+    if (task.importance == TaskImportance.critical) {
       return streak > 0
           ? 'Racha de $streak días. No dejes que se rompa.'
           : 'Completa esta tarea para no romper tu racha.';
+    }
+    if (task.importance == TaskImportance.important) {
+      return streak > 0
+          ? 'Racha de $streak días. Sigue así.'
+          : 'Completa esta tarea para empezar tu racha.';
     }
     if (task.description.isNotEmpty) return task.description;
     return 'Es hora de ${task.title.toLowerCase()}';

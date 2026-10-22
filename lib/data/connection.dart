@@ -6,8 +6,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-import 'database.dart';
-
 /// Opens the on-device SQLite database.
 ///
 /// The database runs in a background isolate so that queries never block the
@@ -32,6 +30,3 @@ LazyDatabase openConnection() {
     );
   });
 }
-
-/// Builds a database backed by the given executor, for tests.
-AppDatabase openTestConnection(QueryExecutor executor) => AppDatabase(executor);

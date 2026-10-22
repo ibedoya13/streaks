@@ -45,11 +45,8 @@ class StreakTasks extends Table {
 class Completions extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-  IntColumn get taskId => integer().references(
-    StreakTasks,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+  IntColumn get taskId =>
+      integer().references(StreakTasks, #id, onDelete: KeyAction.cascade)();
 
   /// Midnight of the day this completion belongs to, stored as an ISO date
   /// string (yyyy-MM-dd) so days are comparable and timezone-stable.

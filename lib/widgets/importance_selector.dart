@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/task_importance.dart';
-import '../theme.dart';
+import 'importance_visuals.dart';
 
 /// Lets the user pick how important a task is.
 ///
@@ -45,12 +45,6 @@ class _ImportanceOption extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  /// The accent colour that represents this level.
-  Color get _accent => switch (level) {
-    TaskImportance.normal => StreaksTheme.flameOrange,
-    TaskImportance.critical => StreaksTheme.flameRed,
-  };
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -66,22 +60,20 @@ class _ImportanceOption extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: selected
-                ? _accent.withValues(alpha: 0.12)
+                ? level.accent.withValues(alpha: 0.12)
                 : scheme.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: selected ? _accent : scheme.outlineVariant,
+              color: selected ? level.accent : scheme.outlineVariant,
               width: selected ? 2 : 1,
             ),
           ),
           child: Row(
             children: [
               Icon(
-                level.isEscalating
-                    ? Icons.priority_high_rounded
-                    : Icons.check_circle_outline,
+                level.icon,
                 size: 22,
-                color: selected ? _accent : scheme.onSurfaceVariant,
+                color: selected ? level.accent : scheme.onSurfaceVariant,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -92,7 +84,7 @@ class _ImportanceOption extends StatelessWidget {
                       level.label,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: selected ? _accent : scheme.onSurface,
+                        color: selected ? level.accent : scheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -102,11 +94,21 @@ class _ImportanceOption extends StatelessWidget {
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      level.intervalLabel,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: selected
+                            ? level.accent
+                            : scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
               if (selected)
-                Icon(Icons.check_circle, size: 20, color: _accent),
+                Icon(Icons.check_circle, size: 20, color: level.accent),
             ],
           ),
         ),

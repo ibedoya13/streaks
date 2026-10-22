@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streaks/data/database.dart';
 import 'package:streaks/data/task_dao.dart';
@@ -11,6 +12,11 @@ import 'package:streaks/notifications/reminder_scheduler.dart';
 class _FakeNotificationService extends NotificationService {
   final List<int> scheduled = [];
   final List<int> cancelled = [];
+
+  /// The ids the fake operating system currently holds, mirroring what
+  /// `pendingNotificationRequests` returns on a real device.
+  final Set<int> pendingIds = {};
+
   bool permission = true;
 
   @override
@@ -36,19 +42,28 @@ class _FakeNotificationService extends NotificationService {
     // new ones, which is what keeps a reschedule from piling them up.
     await cancelTask(taskId);
 
-    final repeats = importance.isEscalating
-        ? NotificationService.criticalRepeatCount
-        : 1;
+    final repeats = NotificationService.repeatCountFor(importance);
     for (var slot = 0; slot < repeats; slot++) {
-      scheduled.add(taskId * NotificationService.idStride + slot);
+      final id = taskId * NotificationService.idStride + slot;
+      scheduled.add(id);
+      pendingIds.add(id);
     }
   }
 
   @override
   Future<void> cancelTask(int taskId) async {
-    for (var slot = 0; slot < NotificationService.criticalRepeatCount; slot++) {
-      cancelled.add(taskId * NotificationService.idStride + slot);
+    for (var slot = 0; slot < NotificationService.maxRepeatCount; slot++) {
+      final id = taskId * NotificationService.idStride + slot;
+      cancelled.add(id);
+      pendingIds.remove(id);
     }
+  }
+
+  @override
+  Future<List<PendingNotificationRequest>> pending() async {
+    return [
+      for (final id in pendingIds) PendingNotificationRequest(id, '', '', null),
+    ];
   }
 }
 
@@ -80,7 +95,7 @@ void main() {
     expect(service.scheduled, hasLength(1));
   });
 
-  test('a critical task gets a reminder every fifteen minutes', () async {
+  test('a critical task repeats every ten minutes', () async {
     await dao.createTask(
       title: 'Tarea',
       importance: TaskImportance.critical,
@@ -90,11 +105,54 @@ void main() {
 
     await scheduler.rescheduleAll();
 
-    expect(service.scheduled, hasLength(NotificationService.criticalRepeatCount));
     expect(
-      NotificationService.criticalInterval,
-      const Duration(minutes: 15),
+      TaskImportance.critical.reminderInterval,
+      const Duration(minutes: 10),
     );
+    expect(
+      service.scheduled,
+      hasLength(NotificationService.repeatCountFor(TaskImportance.critical)),
+    );
+  });
+
+  test('an important task repeats every thirty minutes', () async {
+    await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.important,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+
+    expect(
+      TaskImportance.important.reminderInterval,
+      const Duration(minutes: 30),
+    );
+    expect(
+      service.scheduled,
+      hasLength(NotificationService.repeatCountFor(TaskImportance.important)),
+    );
+  });
+
+  test('every repeating level covers the same window', () async {
+    // A critical task asks for more reminders inside the window than an
+    // important one, because its interval is shorter.
+    expect(
+      NotificationService.repeatCountFor(TaskImportance.critical),
+      greaterThan(NotificationService.repeatCountFor(TaskImportance.important)),
+    );
+    expect(
+      NotificationService.coverageWindow.inMinutes,
+      TaskImportance.critical.reminderInterval!.inMinutes *
+          NotificationService.repeatCountFor(TaskImportance.critical),
+    );
+  });
+
+  test('a normal task does not repeat', () async {
+    expect(TaskImportance.normal.reminderInterval, isNull);
+    expect(TaskImportance.normal.repeats, isFalse);
+    expect(NotificationService.repeatCountFor(TaskImportance.normal), 1);
   });
 
   test('a task without a reminder time gets nothing scheduled', () async {
@@ -137,23 +195,25 @@ void main() {
     expect(service.cancelled, isNotEmpty);
   });
 
-  test('scheduling is idempotent, so a resume does not pile up reminders',
-      () async {
-    await dao.createTask(
-      title: 'Tarea',
-      importance: TaskImportance.critical,
-      reminderHour: 9,
-      reminderMinute: 0,
-    );
+  test(
+    'scheduling is idempotent, so a resume does not pile up reminders',
+    () async {
+      await dao.createTask(
+        title: 'Tarea',
+        importance: TaskImportance.critical,
+        reminderHour: 9,
+        reminderMinute: 0,
+      );
 
-    await scheduler.rescheduleAll();
-    await scheduler.rescheduleAll();
-    await scheduler.rescheduleAll();
+      await scheduler.rescheduleAll();
+      await scheduler.rescheduleAll();
+      await scheduler.rescheduleAll();
 
-    // Each run cancels the previous ids before scheduling them again, so
-    // the operating system never holds more than one series per task.
-    expect(service.cancelled, isNotEmpty);
-  });
+      // Each run cancels the previous ids before scheduling them again, so
+      // the operating system never holds more than one series per task.
+      expect(service.cancelled, isNotEmpty);
+    },
+  );
 
   test('the reminder ids of a task are contiguous and unique', () async {
     await dao.createTask(
@@ -170,6 +230,26 @@ void main() {
     for (var i = 1; i < ids.length; i++) {
       expect(ids[i] - ids[i - 1], 1);
     }
+  });
+
+  test('deleting a task cancels its scheduled reminders', () async {
+    final id = await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+    expect(service.pendingIds, isNotEmpty);
+
+    // The task disappears from the database, as it would when the user
+    // deletes it from the app.
+    await dao.deleteTask(id);
+    await scheduler.rescheduleAll();
+
+    // Its reminders must be gone, otherwise they would keep firing.
+    expect(service.pendingIds, isEmpty);
   });
 
   test('different tasks never share a reminder id', () async {

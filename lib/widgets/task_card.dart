@@ -4,6 +4,7 @@ import '../data/task_dao.dart';
 import '../data/task_importance.dart';
 import '../theme.dart';
 import 'flame_logo.dart';
+import 'importance_visuals.dart';
 
 /// Card representing a single recurring task and its live streak.
 class TaskCard extends StatelessWidget {
@@ -117,7 +118,9 @@ class TaskCard extends StatelessWidget {
                                   task.reminderMinute!,
                                 ),
                                 style: theme.textTheme.labelMedium?.copyWith(
-                                  color: scheme.onSurface.withValues(alpha: 0.5),
+                                  color: scheme.onSurface.withValues(
+                                    alpha: 0.5,
+                                  ),
                                 ),
                               ),
                             ],
@@ -164,9 +167,7 @@ class _ImportanceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = importance.isEscalating
-        ? StreaksTheme.flameRed
-        : StreaksTheme.flameOrange;
+    final accent = importance.accent;
 
     return Tooltip(
       message: importance.description,
@@ -183,13 +184,7 @@ class _ImportanceChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                importance.isEscalating
-                    ? Icons.priority_high_rounded
-                    : Icons.circle_outlined,
-                size: 12,
-                color: accent,
-              ),
+              Icon(importance.icon, size: 12, color: accent),
               const SizedBox(width: 4),
               Text(
                 importance.label,

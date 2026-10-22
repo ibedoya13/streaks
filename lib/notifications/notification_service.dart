@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -8,47 +7,45 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../data/task_importance.dart';
 
-/// A notification that has been scheduled with the operating system.
-class ScheduledReminder {
-  const ScheduledReminder({
-    required this.id,
-    required this.taskId,
-    required this.scheduledAt,
-    required this.importance,
-  });
-
-  /// The id handed to the notification plugin.
-  final int id;
-
-  /// The task this reminder belongs to.
-  final int taskId;
-
-  /// When the notification will fire.
-  final tz.TZDateTime scheduledAt;
-
-  /// The importance level of the task, which decides how insistent it is.
-  final TaskImportance importance;
-}
-
 /// Schedules the reminders for the user's tasks.
 ///
-/// Normal tasks get a single reminder at their scheduled time. Critical tasks
-/// repeat every [criticalInterval] until the user marks them as done, which
-/// is achieved by scheduling a series of individual notifications and
-/// cancelling the ones that have not fired yet.
+/// Normal tasks get a single reminder at their scheduled time. The repeating
+/// levels (important and critical) repeat at the interval defined by the
+/// level until the user marks them as done, which is achieved by scheduling
+/// a series of individual notifications and cancelling the ones that have
+/// not fired yet.
 class NotificationService {
   NotificationService({FlutterLocalNotificationsPlugin? plugin})
     : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
 
-  /// How often a critical task repeats its reminder.
-  static const Duration criticalInterval = Duration(minutes: 15);
+  /// How long the reminders of a repeating task keep nagging.
+  ///
+  /// Every repeating level covers the same window, so a critical task
+  /// simply asks for more reminders inside it than an important one.
+  static const Duration coverageWindow = Duration(hours: 2);
 
-  /// How far ahead a critical task's repetitions are scheduled. The whole
-  /// series is re-scheduled whenever the app comes to the foreground, so
-  /// this only needs to cover the time until the next app open.
-  static const int criticalRepeatCount = 8;
+  /// How many notifications a task of the given importance gets scheduled.
+  ///
+  /// A normal task gets a single one; a repeating level gets one per
+  /// interval until the coverage window is filled.
+  static int repeatCountFor(TaskImportance importance) {
+    final interval = importance.reminderInterval;
+    if (interval == null) return 1;
+    return coverageWindow.inMinutes ~/ interval.inMinutes;
+  }
+
+  /// The largest number of notifications any single task can have
+  /// scheduled, used to cancel them all.
+  static int get maxRepeatCount {
+    var max = 1;
+    for (final level in TaskImportance.values) {
+      final count = repeatCountFor(level);
+      if (count > max) max = count;
+    }
+    return max;
+  }
 
   /// Base for the notification ids. Every reminder of a task uses
   /// `taskId * idStride + slot`, which makes it possible to cancel all the
@@ -74,11 +71,12 @@ class NotificationService {
       tz.setLocalLocation(tz.getLocation('UTC'));
     }
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
 
     await _plugin.initialize(
       settings: const InitializationSettings(android: androidSettings),
-      onDidReceiveNotificationResponse: _onNotificationResponse,
     );
 
     await _createChannels();
@@ -127,6 +125,15 @@ class NotificationService {
 
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
+        'streaks_important',
+        'Recordatorios importantes',
+        description: 'Avisos repetidos de tus tareas importantes',
+        importance: Importance.high,
+      ),
+    );
+
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
         'streaks_critical',
         'Recordatorios críticos',
         description: 'Avisos repetidos de tus tareas críticas',
@@ -134,16 +141,6 @@ class NotificationService {
       ),
     );
   }
-
-  void _onNotificationResponse(NotificationResponse response) {
-    final taskId = int.tryParse(response.payload ?? '');
-    if (taskId != null) {
-      lastOpenedTaskId = taskId;
-    }
-  }
-
-  /// The task whose notification was tapped, if any.
-  int? lastOpenedTaskId;
 
   /// Schedules the reminders for a task.
   ///
@@ -186,10 +183,11 @@ class NotificationService {
       );
     }
 
-    final repeats = importance.isEscalating ? criticalRepeatCount : 1;
+    final repeats = repeatCountFor(importance);
+    final interval = importance.reminderInterval ?? Duration.zero;
 
     for (var slot = 0; slot < repeats; slot++) {
-      final when = first.add(criticalInterval * slot);
+      final when = first.add(interval * slot);
       await _scheduleOne(
         id: taskId * idStride + slot,
         taskId: taskId,
@@ -211,17 +209,11 @@ class NotificationService {
   }) async {
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        importance.isEscalating ? 'streaks_critical' : 'streaks_normal',
-        importance.isEscalating
-            ? 'Recordatorios críticos'
-            : 'Recordatorios',
-        channelDescription: importance.isEscalating
-            ? 'Avisos repetidos de tus tareas críticas'
-            : 'Avisos de tus tareas regulares',
-        importance: importance.isEscalating
-            ? Importance.max
-            : Importance.defaultImportance,
-        priority: importance.isEscalating ? Priority.max : Priority.defaultPriority,
+        _channelIdFor(importance),
+        _channelNameFor(importance),
+        channelDescription: _channelDescriptionFor(importance),
+        importance: _androidImportanceFor(importance),
+        priority: _androidPriorityFor(importance),
         category: AndroidNotificationCategory.reminder,
         autoCancel: true,
       ),
@@ -238,11 +230,51 @@ class NotificationService {
     );
   }
 
+  /// The channel a level of importance posts to.
+  ///
+  /// Each level has its own channel so the user can tune how intrusive each
+  /// one is from the Android settings.
+  static String _channelIdFor(TaskImportance importance) =>
+      switch (importance) {
+        TaskImportance.normal => 'streaks_normal',
+        TaskImportance.important => 'streaks_important',
+        TaskImportance.critical => 'streaks_critical',
+      };
+
+  static String _channelNameFor(TaskImportance importance) =>
+      switch (importance) {
+        TaskImportance.normal => 'Recordatorios',
+        TaskImportance.important => 'Recordatorios importantes',
+        TaskImportance.critical => 'Recordatorios críticos',
+      };
+
+  static String _channelDescriptionFor(TaskImportance importance) =>
+      switch (importance) {
+        TaskImportance.normal => 'Avisos de tus tareas regulares',
+        TaskImportance.important =>
+          'Avisos repetidos de tus tareas importantes',
+        TaskImportance.critical => 'Avisos repetidos de tus tareas críticas',
+      };
+
+  static Importance _androidImportanceFor(TaskImportance importance) =>
+      switch (importance) {
+        TaskImportance.normal => Importance.defaultImportance,
+        TaskImportance.important => Importance.high,
+        TaskImportance.critical => Importance.max,
+      };
+
+  static Priority _androidPriorityFor(TaskImportance importance) =>
+      switch (importance) {
+        TaskImportance.normal => Priority.defaultPriority,
+        TaskImportance.important => Priority.high,
+        TaskImportance.critical => Priority.max,
+      };
+
   /// Cancels every reminder scheduled for a task.
   Future<void> cancelTask(int taskId) async {
     await initialize();
 
-    for (var slot = 0; slot < criticalRepeatCount; slot++) {
+    for (var slot = 0; slot < maxRepeatCount; slot++) {
       await _plugin.cancel(id: taskId * idStride + slot);
     }
   }
@@ -257,29 +289,5 @@ class NotificationService {
   Future<List<PendingNotificationRequest>> pending() async {
     await initialize();
     return _plugin.pendingNotificationRequests();
-  }
-
-  /// Shows a notification right away, used to verify the setup works.
-  @visibleForTesting
-  Future<void> showNow({
-    required int id,
-    required String title,
-    required String body,
-  }) async {
-    await initialize();
-    await _plugin.show(
-      id: id,
-      title: title,
-      body: body,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'streaks_normal',
-          'Recordatorios',
-          channelDescription: 'Avisos de tus tareas regulares',
-          importance: Importance.defaultImportance,
-        ),
-      ),
-      payload: '$id',
-    );
   }
 }
