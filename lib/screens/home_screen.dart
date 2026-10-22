@@ -1,66 +1,51 @@
 import 'package:flutter/material.dart';
 
-import '../models/streak_task.dart';
+import '../data/database.dart';
+import '../data/task_dao.dart';
 import '../theme.dart';
 import '../widgets/add_task_sheet.dart';
 import '../widgets/flame_logo.dart';
 import '../widgets/task_card.dart';
 
 /// First screen of the app: the list of recurring tasks and their streaks.
+///
+/// The list is driven by a Drift stream, so every write to the database
+/// (toggling a completion, adding or deleting a task) refreshes the UI
+/// automatically.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, required this.database});
+
+  final AppDatabase database;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List<StreakTask> _tasks = [];
+  late final TaskDao _dao = TaskDao(widget.database);
+  late final Stream<List<TaskWithStreaks>> _tasks =
+      _dao.watchTasksWithStreaks();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadSeedData();
+  Future<void> _addTask({
+    required String title,
+    required String description,
+    int? reminderHour,
+    int? reminderMinute,
+  }) async {
+    await _dao.createTask(
+      title: title,
+      description: description,
+      reminderHour: reminderHour,
+      reminderMinute: reminderMinute,
+    );
   }
 
-  void _loadSeedData() {
-    final today = DateTime.now();
-    _tasks.addAll([
-      StreakTask(
-        id: 'seed-water',
-        title: 'Tomar 2 litros de agua',
-        description: 'Rutina diaria de hidratación',
-        reminderHour: 9,
-        reminderMinute: 0,
-        completions: {
-          DateTime(today.year, today.month, today.day - 3): true,
-          DateTime(today.year, today.month, today.day - 2): true,
-          DateTime(today.year, today.month, today.day - 1): true,
-        },
-      ),
-      StreakTask(
-        id: 'seed-walk',
-        title: 'Caminar 30 minutos',
-        description: 'Salir a caminar o correr',
-        reminderHour: 18,
-        reminderMinute: 30,
-        completions: {
-          DateTime(today.year, today.month, today.day - 1): true,
-        },
-      ),
-    ]);
+  Future<void> _toggleTask(int taskId) async {
+    await _dao.toggleCompletion(taskId, DateTime.now());
   }
 
-  void _addTask(StreakTask task) {
-    setState(() => _tasks.add(task));
-  }
-
-  void _toggleTask(StreakTask task) {
-    setState(() => task.toggle(DateTime.now()));
-  }
-
-  void _deleteTask(StreakTask task) {
-    setState(() => _tasks.remove(task));
+  Future<void> _deleteTask(int taskId) async {
+    await _dao.deleteTask(taskId);
   }
 
   Future<void> _openAddSheet() async {
@@ -74,11 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final doneCount = _tasks
-        .where((t) => t.isCompletedOn(DateTime.now()))
-        .length;
-
     return Scaffold(
       appBar: AppBar(
         title: const Row(
@@ -88,52 +68,95 @@ class _HomeScreenState extends State<HomeScreen> {
             Text('Streaks'),
           ],
         ),
-        actions: [
-          if (_tasks.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: StreaksTheme.creamDeep,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$doneCount/${_tasks.length} hoy',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: StreaksTheme.ember,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddSheet,
         icon: const Icon(Icons.add),
         label: const Text('Nueva tarea'),
       ),
-      body: _tasks.isEmpty
-          ? _EmptyState(onAdd: _openAddSheet)
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-              itemCount: _tasks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final task = _tasks[index];
-                return TaskCard(
-                  task: task,
-                  onToggle: () => _toggleTask(task),
-                  onDelete: () => _deleteTask(task),
-                );
-              },
+      body: StreamBuilder<List<TaskWithStreaks>>(
+        stream: _tasks,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return _ErrorState(error: snapshot.error!);
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final tasks = snapshot.data!;
+          final doneCount = tasks.where((t) => t.completedToday).length;
+
+          return Column(
+            children: [
+              if (tasks.isNotEmpty)
+                _ProgressHeader(done: doneCount, total: tasks.length),
+              Expanded(
+                child: tasks.isEmpty
+                    ? _EmptyState(onAdd: _openAddSheet)
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                        itemCount: tasks.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final entry = tasks[index];
+                          return TaskCard(
+                            entry: entry,
+                            onToggle: () => _toggleTask(entry.task.id),
+                            onDelete: () => _deleteTask(entry.task.id),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Header showing how much of today's routine is already done.
+class _ProgressHeader extends StatelessWidget {
+  const _ProgressHeader({required this.done, required this.total});
+
+  final int done;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final allDone = done == total;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: StreaksTheme.creamDeep,
+              borderRadius: BorderRadius.circular(20),
             ),
+            child: Text(
+              '$done/$total hoy',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: StreaksTheme.ember,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              allDone ? '¡Rutina completa! 🔥' : 'Mantén la racha viva',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -174,6 +197,48 @@ class _EmptyState extends StatelessWidget {
               onPressed: onAdd,
               icon: const Icon(Icons.add),
               label: const Text('Crear tarea'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No se pudo cargar la base de datos',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$error',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

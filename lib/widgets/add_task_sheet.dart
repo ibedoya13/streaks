@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../models/streak_task.dart';
+/// Payload for a newly created task.
+typedef NewTaskData = Future<void> Function({
+  required String title,
+  required String description,
+  int? reminderHour,
+  int? reminderMinute,
+});
 
 /// Bottom sheet used to create a new recurring task.
 class AddTaskSheet extends StatefulWidget {
   const AddTaskSheet({super.key, required this.onSubmit});
 
-  final ValueChanged<StreakTask> onSubmit;
+  final NewTaskData onSubmit;
 
   @override
   State<AddTaskSheet> createState() => _AddTaskSheetState();
@@ -27,18 +33,15 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    widget.onSubmit(
-      StreakTask(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        title: _titleController.text.trim(),
-        description: _descriptionController.text.trim(),
-        reminderHour: _reminderEnabled ? _reminderTime.hour : null,
-        reminderMinute: _reminderEnabled ? _reminderTime.minute : null,
-      ),
+    await widget.onSubmit(
+      title: _titleController.text.trim(),
+      description: _descriptionController.text.trim(),
+      reminderHour: _reminderEnabled ? _reminderTime.hour : null,
+      reminderMinute: _reminderEnabled ? _reminderTime.minute : null,
     );
-    Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override

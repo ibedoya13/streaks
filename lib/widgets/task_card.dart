@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../models/streak_task.dart';
+import '../data/task_dao.dart';
 import '../theme.dart';
 import 'flame_logo.dart';
 
@@ -8,12 +8,12 @@ import 'flame_logo.dart';
 class TaskCard extends StatelessWidget {
   const TaskCard({
     super.key,
-    required this.task,
+    required this.entry,
     required this.onToggle,
     required this.onDelete,
   });
 
-  final StreakTask task;
+  final TaskWithStreaks entry;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
 
@@ -21,8 +21,9 @@ class TaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final streak = task.currentStreak();
-    final doneToday = task.isCompletedOn(DateTime.now());
+    final task = entry.task;
+    final streak = entry.currentStreak;
+    final doneToday = entry.completedToday;
 
     return Card(
       child: InkWell(
@@ -78,7 +79,7 @@ class TaskCard extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (task.hasReminder) ...[
+                        if (task.reminderHour != null) ...[
                           const SizedBox(width: 12),
                           Icon(
                             Icons.notifications_active_outlined,
