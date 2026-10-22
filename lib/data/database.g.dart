@@ -47,6 +47,16 @@ class $StreakTasksTable extends StreakTasks
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<TaskImportance, int> importance =
+      GeneratedColumn<int>(
+        'importance',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(TaskImportance.normalDbValue),
+      ).withConverter<TaskImportance>($StreakTasksTable.$converterimportance);
   static const VerificationMeta _reminderHourMeta = const VerificationMeta(
     'reminderHour',
   );
@@ -112,6 +122,7 @@ class $StreakTasksTable extends StreakTasks
     id,
     title,
     description,
+    importance,
     reminderHour,
     reminderMinute,
     createdAt,
@@ -209,6 +220,12 @@ class $StreakTasksTable extends StreakTasks
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       )!,
+      importance: $StreakTasksTable.$converterimportance.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}importance'],
+        )!,
+      ),
       reminderHour: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}reminder_hour'],
@@ -236,12 +253,25 @@ class $StreakTasksTable extends StreakTasks
   $StreakTasksTable createAlias(String alias) {
     return $StreakTasksTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<TaskImportance, int> $converterimportance =
+      const TaskImportanceConverter();
 }
 
 class StreakTask extends DataClass implements Insertable<StreakTask> {
   final int id;
   final String title;
   final String description;
+
+  /// How insistent this task's reminders should be.
+  ///
+  /// Stored as an integer through a converter, so the levels can be added or
+  /// reordered later without invalidating the data already stored.
+  ///
+  /// The default is written in the raw stored form, because that is what
+  /// SQLite puts in the `CREATE TABLE` statement and what the migration
+  /// needs when adding the column to a table that already has rows.
+  final TaskImportance importance;
 
   /// Local time of the daily reminder; null when no reminder is scheduled.
   final int? reminderHour;
@@ -259,6 +289,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
     required this.id,
     required this.title,
     required this.description,
+    required this.importance,
     this.reminderHour,
     this.reminderMinute,
     required this.createdAt,
@@ -271,6 +302,11 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
     map['id'] = Variable<int>(id);
     map['title'] = Variable<String>(title);
     map['description'] = Variable<String>(description);
+    {
+      map['importance'] = Variable<int>(
+        $StreakTasksTable.$converterimportance.toSql(importance),
+      );
+    }
     if (!nullToAbsent || reminderHour != null) {
       map['reminder_hour'] = Variable<int>(reminderHour);
     }
@@ -288,6 +324,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
       id: Value(id),
       title: Value(title),
       description: Value(description),
+      importance: Value(importance),
       reminderHour: reminderHour == null && nullToAbsent
           ? const Value.absent()
           : Value(reminderHour),
@@ -309,6 +346,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
       id: serializer.fromJson<int>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       description: serializer.fromJson<String>(json['description']),
+      importance: serializer.fromJson<TaskImportance>(json['importance']),
       reminderHour: serializer.fromJson<int?>(json['reminderHour']),
       reminderMinute: serializer.fromJson<int?>(json['reminderMinute']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -323,6 +361,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
       'id': serializer.toJson<int>(id),
       'title': serializer.toJson<String>(title),
       'description': serializer.toJson<String>(description),
+      'importance': serializer.toJson<TaskImportance>(importance),
       'reminderHour': serializer.toJson<int?>(reminderHour),
       'reminderMinute': serializer.toJson<int?>(reminderMinute),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -335,6 +374,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
     int? id,
     String? title,
     String? description,
+    TaskImportance? importance,
     Value<int?> reminderHour = const Value.absent(),
     Value<int?> reminderMinute = const Value.absent(),
     DateTime? createdAt,
@@ -344,6 +384,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
     id: id ?? this.id,
     title: title ?? this.title,
     description: description ?? this.description,
+    importance: importance ?? this.importance,
     reminderHour: reminderHour.present ? reminderHour.value : this.reminderHour,
     reminderMinute: reminderMinute.present
         ? reminderMinute.value
@@ -359,6 +400,9 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
       description: data.description.present
           ? data.description.value
           : this.description,
+      importance: data.importance.present
+          ? data.importance.value
+          : this.importance,
       reminderHour: data.reminderHour.present
           ? data.reminderHour.value
           : this.reminderHour,
@@ -379,6 +423,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
+          ..write('importance: $importance, ')
           ..write('reminderHour: $reminderHour, ')
           ..write('reminderMinute: $reminderMinute, ')
           ..write('createdAt: $createdAt, ')
@@ -393,6 +438,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
     id,
     title,
     description,
+    importance,
     reminderHour,
     reminderMinute,
     createdAt,
@@ -406,6 +452,7 @@ class StreakTask extends DataClass implements Insertable<StreakTask> {
           other.id == this.id &&
           other.title == this.title &&
           other.description == this.description &&
+          other.importance == this.importance &&
           other.reminderHour == this.reminderHour &&
           other.reminderMinute == this.reminderMinute &&
           other.createdAt == this.createdAt &&
@@ -417,6 +464,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
   final Value<int> id;
   final Value<String> title;
   final Value<String> description;
+  final Value<TaskImportance> importance;
   final Value<int?> reminderHour;
   final Value<int?> reminderMinute;
   final Value<DateTime> createdAt;
@@ -426,6 +474,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.description = const Value.absent(),
+    this.importance = const Value.absent(),
     this.reminderHour = const Value.absent(),
     this.reminderMinute = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -436,6 +485,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
     this.id = const Value.absent(),
     required String title,
     this.description = const Value.absent(),
+    this.importance = const Value.absent(),
     this.reminderHour = const Value.absent(),
     this.reminderMinute = const Value.absent(),
     required DateTime createdAt,
@@ -447,6 +497,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
     Expression<int>? id,
     Expression<String>? title,
     Expression<String>? description,
+    Expression<int>? importance,
     Expression<int>? reminderHour,
     Expression<int>? reminderMinute,
     Expression<DateTime>? createdAt,
@@ -457,6 +508,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
       if (id != null) 'id': id,
       if (title != null) 'title': title,
       if (description != null) 'description': description,
+      if (importance != null) 'importance': importance,
       if (reminderHour != null) 'reminder_hour': reminderHour,
       if (reminderMinute != null) 'reminder_minute': reminderMinute,
       if (createdAt != null) 'created_at': createdAt,
@@ -469,6 +521,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
     Value<int>? id,
     Value<String>? title,
     Value<String>? description,
+    Value<TaskImportance>? importance,
     Value<int?>? reminderHour,
     Value<int?>? reminderMinute,
     Value<DateTime>? createdAt,
@@ -479,6 +532,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
+      importance: importance ?? this.importance,
       reminderHour: reminderHour ?? this.reminderHour,
       reminderMinute: reminderMinute ?? this.reminderMinute,
       createdAt: createdAt ?? this.createdAt,
@@ -498,6 +552,11 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
     }
     if (description.present) {
       map['description'] = Variable<String>(description.value);
+    }
+    if (importance.present) {
+      map['importance'] = Variable<int>(
+        $StreakTasksTable.$converterimportance.toSql(importance.value),
+      );
     }
     if (reminderHour.present) {
       map['reminder_hour'] = Variable<int>(reminderHour.value);
@@ -523,6 +582,7 @@ class StreakTasksCompanion extends UpdateCompanion<StreakTask> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
+          ..write('importance: $importance, ')
           ..write('reminderHour: $reminderHour, ')
           ..write('reminderMinute: $reminderMinute, ')
           ..write('createdAt: $createdAt, ')
@@ -874,6 +934,7 @@ typedef $$StreakTasksTableCreateCompanionBuilder =
       Value<int> id,
       required String title,
       Value<String> description,
+      Value<TaskImportance> importance,
       Value<int?> reminderHour,
       Value<int?> reminderMinute,
       required DateTime createdAt,
@@ -885,6 +946,7 @@ typedef $$StreakTasksTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String> title,
       Value<String> description,
+      Value<TaskImportance> importance,
       Value<int?> reminderHour,
       Value<int?> reminderMinute,
       Value<DateTime> createdAt,
@@ -937,6 +999,12 @@ class $$StreakTasksTableFilterComposer
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<TaskImportance, TaskImportance, int>
+  get importance => $composableBuilder(
+    column: $table.importance,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<int> get reminderHour => $composableBuilder(
@@ -1014,6 +1082,11 @@ class $$StreakTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get importance => $composableBuilder(
+    column: $table.importance,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get reminderHour => $composableBuilder(
     column: $table.reminderHour,
     builder: (column) => ColumnOrderings(column),
@@ -1059,6 +1132,12 @@ class $$StreakTasksTableAnnotationComposer
     column: $table.description,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<TaskImportance, int> get importance =>
+      $composableBuilder(
+        column: $table.importance,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<int> get reminderHour => $composableBuilder(
     column: $table.reminderHour,
@@ -1138,6 +1217,7 @@ class $$StreakTasksTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> description = const Value.absent(),
+                Value<TaskImportance> importance = const Value.absent(),
                 Value<int?> reminderHour = const Value.absent(),
                 Value<int?> reminderMinute = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -1147,6 +1227,7 @@ class $$StreakTasksTableTableManager
                 id: id,
                 title: title,
                 description: description,
+                importance: importance,
                 reminderHour: reminderHour,
                 reminderMinute: reminderMinute,
                 createdAt: createdAt,
@@ -1158,6 +1239,7 @@ class $$StreakTasksTableTableManager
                 Value<int> id = const Value.absent(),
                 required String title,
                 Value<String> description = const Value.absent(),
+                Value<TaskImportance> importance = const Value.absent(),
                 Value<int?> reminderHour = const Value.absent(),
                 Value<int?> reminderMinute = const Value.absent(),
                 required DateTime createdAt,
@@ -1167,6 +1249,7 @@ class $$StreakTasksTableTableManager
                 id: id,
                 title: title,
                 description: description,
+                importance: importance,
                 reminderHour: reminderHour,
                 reminderMinute: reminderMinute,
                 createdAt: createdAt,

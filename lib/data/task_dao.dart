@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import 'database.dart';
+import 'task_importance.dart';
 
 /// A task together with its computed streak figures.
 class TaskWithStreaks {
@@ -99,6 +100,7 @@ SELECT
   t.id AS id,
   t.title AS title,
   t.description AS description,
+  t.importance AS importance,
   t.reminder_hour AS reminder_hour,
   t.reminder_minute AS reminder_minute,
   t.created_at AS created_at,
@@ -139,6 +141,9 @@ ORDER BY t.sort_order ASC, t.id ASC
         id: row.read<int>('id'),
         title: row.read<String>('title'),
         description: row.read<String>('description'),
+        // The converter is not applied to custom queries, so the raw stored
+        // integer is mapped by hand here.
+        importance: TaskImportance.fromDb(row.read<int>('importance')),
         reminderHour: row.readNullable<int>('reminder_hour'),
         reminderMinute: row.readNullable<int>('reminder_minute'),
         createdAt: row.read<DateTime>('created_at'),
@@ -156,6 +161,7 @@ ORDER BY t.sort_order ASC, t.id ASC
   Future<int> createTask({
     required String title,
     String description = '',
+    TaskImportance importance = TaskImportance.normal,
     int? reminderHour,
     int? reminderMinute,
   }) async {
@@ -168,11 +174,19 @@ ORDER BY t.sort_order ASC, t.id ASC
       StreakTasksCompanion.insert(
         title: title,
         description: Value(description),
+        importance: Value(importance),
         reminderHour: Value(reminderHour),
         reminderMinute: Value(reminderMinute),
         createdAt: DateTime.now(),
         sortOrder: Value(nextOrder),
       ),
+    );
+  }
+
+  /// Changes the importance level of a task.
+  Future<void> updateImportance(int taskId, TaskImportance importance) async {
+    await (db.update(db.streakTasks)..where((t) => t.id.equals(taskId))).write(
+      StreakTasksCompanion(importance: Value(importance)),
     );
   }
 

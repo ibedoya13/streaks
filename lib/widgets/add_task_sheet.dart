@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../data/task_importance.dart';
+import 'importance_selector.dart';
+
 /// Payload for a newly created task.
 typedef NewTaskData = Future<void> Function({
   required String title,
   required String description,
+  required TaskImportance importance,
   int? reminderHour,
   int? reminderMinute,
 });
@@ -25,6 +29,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
 
   bool _reminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
+  TaskImportance _importance = TaskImportance.normal;
 
   @override
   void dispose() {
@@ -38,6 +43,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     await widget.onSubmit(
       title: _titleController.text.trim(),
       description: _descriptionController.text.trim(),
+      importance: _importance,
       reminderHour: _reminderEnabled ? _reminderTime.hour : null,
       reminderMinute: _reminderEnabled ? _reminderTime.minute : null,
     );
@@ -102,6 +108,20 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
               ),
             ),
             const SizedBox(height: 8),
+            const SizedBox(height: 16),
+            Text(
+              'Importancia',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ImportanceSelector(
+              value: _importance,
+              onChanged: (value) => setState(() => _importance = value),
+            ),
+            const SizedBox(height: 16),
             SwitchListTile(
               value: _reminderEnabled,
               onChanged: (value) => setState(() => _reminderEnabled = value),

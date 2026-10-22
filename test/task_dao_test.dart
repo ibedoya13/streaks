@@ -1,7 +1,9 @@
+import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streaks/data/database.dart';
 import 'package:streaks/data/task_dao.dart';
+import 'package:streaks/data/task_importance.dart';
 
 void main() {
   late AppDatabase db;
@@ -146,5 +148,60 @@ void main() {
 
     final parsed = TaskDao.parseDay(key);
     expect(parsed, DateTime(2026, 10, 21));
+  });
+
+  test('a new task defaults to normal importance', () async {
+    await dao.createTask(title: 'Tarea');
+
+    final tasks = await dao.loadTasksWithStreaks();
+    expect(tasks.first.task.importance, TaskImportance.normal);
+    expect(tasks.first.task.importance.isEscalating, isFalse);
+  });
+
+  test('a task can be created as critical', () async {
+    await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+    );
+
+    final tasks = await dao.loadTasksWithStreaks();
+    expect(tasks.first.task.importance, TaskImportance.critical);
+    expect(tasks.first.task.importance.isEscalating, isTrue);
+  });
+
+  test('the importance of a task can be changed', () async {
+    final id = await dao.createTask(title: 'Tarea');
+
+    await dao.updateImportance(id, TaskImportance.critical);
+    var tasks = await dao.loadTasksWithStreaks();
+    expect(tasks.first.task.importance, TaskImportance.critical);
+
+    await dao.updateImportance(id, TaskImportance.normal);
+    tasks = await dao.loadTasksWithStreaks();
+    expect(tasks.first.task.importance, TaskImportance.normal);
+  });
+
+  test('importance is stored as a stable integer, not an enum index', () async {
+    final id = await dao.createTask(
+      title: 'Tarea',
+      importance: TaskImportance.critical,
+    );
+
+    // Read the raw column, bypassing the converter.
+    final raw = await db
+        .customSelect(
+          'SELECT importance FROM streak_tasks WHERE id = ?',
+          variables: [Variable.withInt(id)],
+        )
+        .getSingle();
+
+    expect(raw.read<int>('importance'), TaskImportance.critical.dbValue);
+  });
+
+  test('an unknown stored importance falls back to normal', () {
+    expect(TaskImportance.fromDb(0), TaskImportance.normal);
+    expect(TaskImportance.fromDb(1), TaskImportance.critical);
+    // A value written by a future version of the app must not crash.
+    expect(TaskImportance.fromDb(99), TaskImportance.normal);
   });
 }

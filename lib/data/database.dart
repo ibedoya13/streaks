@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import 'connection.dart';
+import 'task_importance.dart';
 
 part 'database.g.dart';
 
@@ -11,6 +12,18 @@ class StreakTasks extends Table {
   TextColumn get title => text().withLength(min: 1, max: 120)();
 
   TextColumn get description => text().withDefault(const Constant(''))();
+
+  /// How insistent this task's reminders should be.
+  ///
+  /// Stored as an integer through a converter, so the levels can be added or
+  /// reordered later without invalidating the data already stored.
+  ///
+  /// The default is written in the raw stored form, because that is what
+  /// SQLite puts in the `CREATE TABLE` statement and what the migration
+  /// needs when adding the column to a table that already has rows.
+  IntColumn get importance => integer()
+      .map(const TaskImportanceConverter())
+      .withDefault(const Constant(TaskImportance.normalDbValue))();
 
   /// Local time of the daily reminder; null when no reminder is scheduled.
   IntColumn get reminderHour => integer().nullable()();
@@ -61,13 +74,20 @@ class AppDatabase extends _$AppDatabase {
   final bool _seedExampleData;
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
       if (_seedExampleData) await _seedExamples();
+    },
+    onUpgrade: (m, from, to) async {
+      // v1 -> v2: tasks gained an importance level. Existing tasks become
+      // `normal`, which is what the column default already says.
+      if (from < 2) {
+        await m.addColumn(streakTasks, streakTasks.importance);
+      }
     },
     beforeOpen: (details) async {
       // Required for the ON DELETE CASCADE on completions to actually fire.
