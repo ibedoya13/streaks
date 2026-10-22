@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/streak_task.dart';
+import '../theme.dart';
 import '../widgets/add_task_sheet.dart';
+import '../widgets/flame_logo.dart';
 import '../widgets/task_card.dart';
 
 /// First screen of the app: the list of recurring tasks and their streaks.
@@ -79,17 +81,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Streaks'),
+        title: const Row(
+          children: [
+            FlameLogo(size: 30),
+            SizedBox(width: 10),
+            Text('Streaks'),
+          ],
+        ),
         actions: [
           if (_tasks.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(
-                child: Text(
-                  '$doneCount/${_tasks.length} hoy',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: StreaksTheme.creamDeep,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$doneCount/${_tasks.length} hoy',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: StreaksTheme.ember,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -134,11 +152,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.local_fire_department_outlined,
-              size: 64,
-              color: theme.colorScheme.primary,
-            ),
+            const FlameLogo(size: 72),
             const SizedBox(height: 16),
             Text(
               'Empieza tu primera racha',

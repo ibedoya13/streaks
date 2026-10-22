@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="flame" gradientUnits="userSpaceOnUse" x1="0" y1="120" x2="0" y2="960">
+      <stop offset="0%" stop-color="#FFD54A"/>
+      <stop offset="45%" stop-color="#F79009"/>
+      <stop offset="100%" stop-color="#D92D20"/>
+    </linearGradient>
+  <mask id="flameMask">
+    <g fill="#ffffff" stroke="#ffffff" stroke-width="132"
+       stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 694 330 C 700 240 726 180 768 120 C 812 200 806 300 772 360 C 752 396 712 386 694 330 Z" stroke="none"/>
+      <path d="M 300 700 C 258 760 216 826 220 900 C 266 880 296 826 308 766 C 314 726 310 706 300 700 Z" stroke="none"/>
+      <path d="M 700 392 C 700 302 630 255 520 255 C 410 255 340 305 340 395 C 340 500 440 545 520 560 C 605 576 684 615 684 720 C 684 810 605 870 500 870 C 395 870 330 820 330 735" fill="none"/>
+    </g>
+  </mask>
+  </defs>
+  <g transform="translate(512 512) scale(0.58) translate(-512 -512)">
+    <rect width="1024" height="1024" fill="url(#flame)" mask="url(#flameMask)"/>
+  </g>
+</svg>

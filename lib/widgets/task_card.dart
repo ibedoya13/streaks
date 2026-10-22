@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/streak_task.dart';
+import '../theme.dart';
+import 'flame_logo.dart';
 
 /// Card representing a single recurring task and its live streak.
 class TaskCard extends StatelessWidget {
@@ -60,16 +62,19 @@ class TaskCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(
-                          Icons.local_fire_department,
-                          size: 14,
-                          color: scheme.primary,
+                        FlameLogo(
+                          size: 16,
+                          color: streak > 0
+                              ? StreaksTheme.flameOrange
+                              : scheme.onSurfaceVariant,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 6),
                         Text(
                           streak == 1 ? '1 día' : '$streak días',
                           style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.primary,
+                            color: streak > 0
+                                ? StreaksTheme.flameOrange
+                                : scheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -128,25 +133,37 @@ class _StreakBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = doneToday ? scheme.primary : scheme.outline;
+    final alive = doneToday || streak > 0;
 
     return Container(
-      width: 44,
-      height: 44,
+      width: 46,
+      height: 46,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: doneToday
-            ? scheme.primary.withValues(alpha: 0.12)
-            : scheme.surfaceContainerHighest,
-        border: Border.all(color: color, width: 1.5),
+        gradient: alive
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  StreaksTheme.flameYellow,
+                  StreaksTheme.flameOrange,
+                  StreaksTheme.flameRed,
+                ],
+              )
+            : null,
+        color: alive ? null : scheme.surfaceContainerHighest,
+        border: Border.all(
+          color: alive ? Colors.transparent : scheme.outline,
+          width: 1.5,
+        ),
       ),
       alignment: Alignment.center,
       child: Text(
         '$streak',
         style: TextStyle(
           fontWeight: FontWeight.w700,
-          fontSize: 16,
-          color: doneToday ? scheme.primary : scheme.onSurfaceVariant,
+          fontSize: 17,
+          color: alive ? Colors.white : scheme.onSurfaceVariant,
         ),
       ),
     );
