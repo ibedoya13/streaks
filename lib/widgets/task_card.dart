@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/task_dao.dart';
-import '../data/task_importance.dart';
-import '../data/task_repetition.dart';
 import '../theme.dart';
-import 'flame_logo.dart';
-import 'importance_visuals.dart';
 
 /// Card representing a single recurring task and its live streak.
 class TaskCard extends StatelessWidget {
@@ -14,7 +10,6 @@ class TaskCard extends StatelessWidget {
     required this.entry,
     required this.onToggle,
     required this.onOpenDetail,
-    this.onEditImportance,
     this.dueLabel,
   });
 
@@ -25,9 +20,6 @@ class TaskCard extends StatelessWidget {
 
   /// Swiping the card to the left opens the detail view.
   final VoidCallback onOpenDetail;
-
-  /// Opens the importance editor. When null the importance chip is inert.
-  final VoidCallback? onEditImportance;
 
   /// When the task comes due, shown on the tasks of the coming days.
   final String? dueLabel;
@@ -79,9 +71,7 @@ class TaskCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // The title takes the full width on its own line. Putting
-                      // the importance chip next to it would squeeze the title
-                      // into a narrow column and break the words apart.
+                      // The title takes the full width on its own line.
                       Text(
                         task.title,
                         style: theme.textTheme.titleMedium?.copyWith(
@@ -94,110 +84,40 @@ class TaskCard extends StatelessWidget {
                               : scheme.onSurface,
                         ),
                       ),
-                      if (task.description.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          task.description,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 6),
-                      // A Wrap instead of a Row: the metadata can wrap onto a
-                      // second line on narrow screens instead of overflowing.
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                      // The card carries the streak, the name and the hour of
+                      // the reminder. Everything else lives in the detail
+                      // view, reached with a swipe to the left.
+                      Row(
                         children: [
-                          _ImportanceChip(
-                            importance: task.importance,
-                            onTap: onEditImportance,
+                          Icon(
+                            Icons.notifications_active_outlined,
+                            size: 14,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              FlameLogo(
-                                size: 16,
-                                color: streak > 0
-                                    ? StreaksTheme.flameOrange
-                                    : scheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                streak == 1 ? '1 día' : '$streak días',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: streak > 0
-                                      ? StreaksTheme.flameOrange
-                                      : scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (dueLabel != null)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.event_outlined,
-                                  size: 14,
-                                  color: StreaksTheme.flameOrange,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  dueLabel!,
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: StreaksTheme.flameOrange,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatTime(task.reminderHour, task.reminderMinute),
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: scheme.onSurface.withValues(alpha: 0.5),
                             ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.notifications_active_outlined,
-                                size: 14,
-                                color: scheme.onSurface.withValues(alpha: 0.5),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatTime(
-                                  task.reminderHour,
-                                  task.reminderMinute,
-                                ),
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: scheme.onSurface.withValues(
-                                    alpha: 0.5,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                task.repetition == TaskRepetition.daily
-                                    ? Icons.today_outlined
-                                    : Icons.event_repeat_outlined,
-                                size: 14,
-                                color: scheme.onSurface.withValues(alpha: 0.5),
+                          if (dueLabel != null) ...[
+                            const SizedBox(width: 12),
+                            Icon(
+                              Icons.event_outlined,
+                              size: 14,
+                              color: StreaksTheme.flameOrange,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              dueLabel!,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: StreaksTheme.flameOrange,
+                                fontWeight: FontWeight.w700,
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                task.repetition.label,
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: scheme.onSurface.withValues(
-                                    alpha: 0.5,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ],
                       ),
                     ],
@@ -215,52 +135,6 @@ class TaskCard extends StatelessWidget {
     final h = hour.toString().padLeft(2, '0');
     final m = minute.toString().padLeft(2, '0');
     return '$h:$m';
-  }
-}
-
-/// Small badge showing the importance level of a task.
-///
-/// Tapping it opens the importance editor, when one is provided.
-class _ImportanceChip extends StatelessWidget {
-  const _ImportanceChip({required this.importance, this.onTap});
-
-  final TaskImportance importance;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = importance.accent;
-
-    return Tooltip(
-      message: importance.description,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: accent.withValues(alpha: 0.45)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(importance.icon, size: 12, color: accent),
-              const SizedBox(width: 4),
-              Text(
-                importance.label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

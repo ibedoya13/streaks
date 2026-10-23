@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../data/task_dao.dart';
+import '../data/task_importance.dart';
 import '../theme.dart';
 import '../widgets/flame_logo.dart';
+import '../widgets/importance_picker.dart';
 import '../widgets/importance_visuals.dart';
 
 /// Detail view of a single task.
@@ -16,6 +18,7 @@ class TaskDetailScreen extends StatefulWidget {
     required this.tasks,
     required this.taskId,
     required this.onDelete,
+    this.onImportanceChanged,
   });
 
   /// The stream of tasks the screen listens to.
@@ -28,6 +31,10 @@ class TaskDetailScreen extends StatefulWidget {
 
   /// Deletes the task with the given id.
   final Future<void> Function(int taskId) onDelete;
+
+  /// Changes the importance of a task. When null the level is read-only.
+  final Future<void> Function(int taskId, TaskImportance importance)?
+  onImportanceChanged;
 
   @override
   State<TaskDetailScreen> createState() => _TaskDetailScreenState();
@@ -70,6 +77,19 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// Opens the importance picker of the task.
+  Future<void> _editImportance(TaskWithStreaks entry) async {
+    final selected = await showImportancePicker(
+      context,
+      current: entry.task.importance,
+      subtitle: entry.task.title,
+    );
+
+    if (selected != null && selected != entry.task.importance) {
+      await widget.onImportanceChanged?.call(entry.task.id, selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,7 +116,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             return const _MissingTask(message: 'La tarea ya no existe');
           }
 
-          return _DetailBody(entry: entry, onDelete: () => _deleteTask(entry!));
+          return _DetailBody(
+            entry: entry,
+            onDelete: () => _deleteTask(entry!),
+            onEditImportance: widget.onImportanceChanged == null
+                ? null
+                : () => _editImportance(entry!),
+          );
         },
       ),
     );
@@ -105,10 +131,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
 /// The content of the detail view.
 class _DetailBody extends StatelessWidget {
-  const _DetailBody({required this.entry, required this.onDelete});
+  const _DetailBody({
+    required this.entry,
+    required this.onDelete,
+    this.onEditImportance,
+  });
 
   final TaskWithStreaks entry;
   final VoidCallback onDelete;
+
+  /// Opens the importance editor. When null the level is read-only.
+  final VoidCallback? onEditImportance;
 
   @override
   Widget build(BuildContext context) {
@@ -138,7 +171,7 @@ class _DetailBody extends StatelessWidget {
         const SizedBox(height: 20),
         _StreakCard(entry: entry),
         const SizedBox(height: 12),
-        _MetadataCard(entry: entry),
+        _MetadataCard(entry: entry, onEditImportance: onEditImportance),
         const SizedBox(height: 28),
         OutlinedButton.icon(
           onPressed: onDelete,
@@ -269,9 +302,10 @@ class _Stat extends StatelessWidget {
 
 /// Card with the schedule of the task.
 class _MetadataCard extends StatelessWidget {
-  const _MetadataCard({required this.entry});
+  const _MetadataCard({required this.entry, this.onEditImportance});
 
   final TaskWithStreaks entry;
+  final VoidCallback? onEditImportance;
 
   @override
   Widget build(BuildContext context) {
@@ -301,26 +335,47 @@ class _MetadataCard extends StatelessWidget {
           children: [
             for (var i = 0; i < rows.length; i++) ...[
               if (i > 0) const Divider(height: 20),
-              Row(
-                children: [
-                  Icon(rows[i].$1, size: 20, color: scheme.onSurfaceVariant),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      rows[i].$2,
-                      style: theme.textTheme.bodyMedium?.copyWith(
+              InkWell(
+                borderRadius: BorderRadius.circular(10),
+                // The importance is the only row that can be changed, and it
+                // is the first one.
+                onTap: i == 0 ? onEditImportance : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Icon(
+                        rows[i].$1,
+                        size: 20,
                         color: scheme.onSurfaceVariant,
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          rows[i].$2,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        rows[i].$3,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      if (i == 0 && onEditImportance != null) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ],
                   ),
-                  Text(
-                    rows[i].$3,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ],

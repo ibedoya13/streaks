@@ -138,9 +138,32 @@ void main() {
     expect(find.byIcon(Icons.event_outlined), findsNothing);
   });
 
-  testWidgets('the description is shown when the task has one', (tester) async {
+  testWidgets('the card only shows the streak, the name and the hour', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      entry: _entry(description: 'Dos litros al día', streak: 4),
+    );
+
+    // What stays.
+    expect(find.text('Tomar agua'), findsOneWidget);
+    expect(find.text('09:00'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+
+    // What goes.
+    expect(find.text('Dos litros al día'), findsNothing);
+    expect(find.text('Normal'), findsNothing);
+    expect(find.text('4 días'), findsNothing);
+    expect(find.text('Diaria'), findsNothing);
+    expect(find.byIcon(Icons.today_outlined), findsNothing);
+  });
+
+  testWidgets('the description is not shown even when the task has one', (
+    tester,
+  ) async {
     await pumpCard(tester, entry: _entry(description: 'Dos litros al día'));
 
-    expect(find.text('Dos litros al día'), findsOneWidget);
+    expect(find.text('Dos litros al día'), findsNothing);
   });
 }

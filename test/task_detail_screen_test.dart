@@ -47,10 +47,12 @@ TaskWithStreaks _entry({
 void main() {
   late StreamController<List<TaskWithStreaks>> controller;
   late List<int> deleted;
+  late List<(int, TaskImportance)> importanceChanges;
 
   setUp(() {
     controller = StreamController<List<TaskWithStreaks>>();
     deleted = [];
+    importanceChanges = [];
   });
 
   tearDown(() async {
@@ -66,6 +68,8 @@ void main() {
           tasks: controller.stream,
           taskId: entry?.task.id ?? 1,
           onDelete: (id) async => deleted.add(id),
+          onImportanceChanged: (id, importance) async =>
+              importanceChanges.add((id, importance)),
         ),
       ),
     );
@@ -104,6 +108,25 @@ void main() {
     expect(find.text('09:00'), findsOneWidget);
     expect(find.text('Repetición'), findsOneWidget);
     expect(find.text('Diaria'), findsOneWidget);
+  });
+
+  testWidgets('the importance can be changed from the detail view', (
+    tester,
+  ) async {
+    await openDetail(tester);
+
+    await tester.tap(find.text('Normal'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The picker is open.
+    expect(find.text('Importancia'), findsOneWidget);
+
+    await tester.tap(find.text('Crítico'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(importanceChanges, [(1, TaskImportance.critical)]);
   });
 
   testWidgets('deleting asks for a confirmation first', (tester) async {

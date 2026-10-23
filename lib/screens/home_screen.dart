@@ -11,7 +11,6 @@ import '../notifications/reminder_scheduler.dart';
 import '../theme.dart';
 import '../widgets/add_task_sheet.dart';
 import '../widgets/flame_logo.dart';
-import '../widgets/importance_selector.dart';
 import '../widgets/section_header.dart';
 import '../widgets/task_card.dart';
 import 'task_detail_screen.dart';
@@ -130,11 +129,18 @@ class _HomeScreenState extends State<HomeScreen> {
           tasks: _dao.watchTasksWithStreaks(),
           taskId: entry.task.id,
           onDelete: _deleteTask,
+          onImportanceChanged: _changeImportance,
         ),
       ),
     );
     // The detail view may have deleted the task, so the reminders are
     // re-scheduled when it closes.
+    await _reschedule();
+  }
+
+  /// Changes the importance of a task.
+  Future<void> _changeImportance(int taskId, TaskImportance importance) async {
+    await _dao.updateImportance(taskId, importance);
     await _reschedule();
   }
 
@@ -151,7 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
       dueLabel: dueLabel,
       onToggle: () => _toggleTask(entry.task.id),
       onOpenDetail: () => _openDetail(entry),
-      onEditImportance: () => _editImportance(entry),
     );
   }
 
@@ -162,77 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
       showDragHandle: false,
       builder: (_) => AddTaskSheet(onSubmit: _addTask),
     );
-  }
-
-  /// Opens the importance editor for a task.
-  Future<void> _editImportance(TaskWithStreaks entry) async {
-    final selected = await showModalBottomSheet<TaskImportance>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: false,
-      builder: (sheetContext) {
-        var current = entry.task.importance;
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              // Scrollable for the same reason as the new-task sheet: with
-              // a tall keyboard the available height can be too small.
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Importancia',
-                      style: Theme.of(context).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      entry.task.title,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ImportanceSelector(
-                      value: current,
-                      onChanged: (value) {
-                        setSheetState(() => current = value);
-                        Navigator.of(sheetContext).pop(value);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    if (selected != null && selected != entry.task.importance) {
-      await _dao.updateImportance(entry.task.id, selected);
-      await _reschedule();
-    }
   }
 
   @override
