@@ -181,10 +181,7 @@ void main() {
 
     expect(service.fireTimes, hasLength(1));
     final tasks = await dao.loadTasksWithStreaks();
-    expect(
-      tasks.first.schedule.isDueOn(service.fireTimes.first),
-      isTrue,
-    );
+    expect(tasks.first.schedule.isDueOn(service.fireTimes.first), isTrue);
   });
 
   test('a weekly task is only reminded on its due day', () async {
@@ -199,10 +196,7 @@ void main() {
 
     expect(service.fireTimes, hasLength(1));
     final tasks = await dao.loadTasksWithStreaks();
-    expect(
-      tasks.first.schedule.isDueOn(service.fireTimes.first),
-      isTrue,
-    );
+    expect(tasks.first.schedule.isDueOn(service.fireTimes.first), isTrue);
   });
 
   test('a task completed today gets no reminder', () async {

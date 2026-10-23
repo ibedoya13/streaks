@@ -32,6 +32,7 @@ void main() {
     String description = '',
     TaskImportance importance = TaskImportance.normal,
     TaskRepetition repetition = TaskRepetition.daily,
+    DateTime? createdAt,
   }) {
     return dao.createTask(
       title: title,
@@ -40,6 +41,7 @@ void main() {
       repetition: repetition,
       reminderHour: reminderHour,
       reminderMinute: reminderMinute,
+      createdAt: createdAt,
     );
   }
 
@@ -47,7 +49,12 @@ void main() {
     List<DateTime> days, {
     TaskRepetition repetition = TaskRepetition.daily,
   }) async {
-    final taskId = await createTask(repetition: repetition);
+    // The schedule is anchored on the day the task was created, so the task
+    // has to exist from before its first completion.
+    final taskId = await createTask(
+      repetition: repetition,
+      createdAt: daysAgo(30),
+    );
     for (final day in days) {
       await dao.toggleCompletion(taskId, day);
     }
@@ -219,18 +226,24 @@ void main() {
       // The anchor is the day the task was created.
       expect(schedule.isDueOn(tasks.first.task.createdAt), isTrue);
       expect(
-        schedule.isDueOn(tasks.first.task.createdAt.add(const Duration(days: 1))),
+        schedule.isDueOn(
+          tasks.first.task.createdAt.add(const Duration(days: 1)),
+        ),
         isFalse,
       );
       expect(
-        schedule.isDueOn(tasks.first.task.createdAt.add(const Duration(days: 2))),
+        schedule.isDueOn(
+          tasks.first.task.createdAt.add(const Duration(days: 2)),
+        ),
         isTrue,
       );
 
       // The day after the creation is not due, so the task is not due today
       // unless today happens to be an even day.
       final today = DateTime.now();
-      final daysSinceCreation = today.difference(tasks.first.task.createdAt).inDays;
+      final daysSinceCreation = today
+          .difference(tasks.first.task.createdAt)
+          .inDays;
       expect(schedule.isDueOn(today), daysSinceCreation.isEven);
     });
 
@@ -242,19 +255,17 @@ void main() {
       final created = tasks.first.task.createdAt;
 
       expect(schedule.isDueOn(created), isTrue);
-      expect(
-        schedule.isDueOn(created.add(const Duration(days: 6))),
-        isFalse,
-      );
-      expect(
-        schedule.isDueOn(created.add(const Duration(days: 7))),
-        isTrue,
-      );
+      expect(schedule.isDueOn(created.add(const Duration(days: 6))), isFalse);
+      expect(schedule.isDueOn(created.add(const Duration(days: 7))), isTrue);
     });
 
     test('the streak of an alternate task counts cycles, not days', () async {
-      // A task created today, completed on the days that come due.
-      final id = await createTask(repetition: TaskRepetition.alternate);
+      // The task started four days ago, so today is the due day of its
+      // third cycle.
+      final id = await createTask(
+        repetition: TaskRepetition.alternate,
+        createdAt: daysAgo(4),
+      );
       final created = (await dao.loadTasksWithStreaks()).first.task.createdAt;
 
       await dao.toggleCompletion(id, created);
@@ -262,24 +273,27 @@ void main() {
       await dao.toggleCompletion(id, created.add(const Duration(days: 4)));
 
       final tasks = await dao.loadTasksWithStreaks();
-      // Three cycles in a row.
+      // Three cycles in a row, even though six days went by.
       expect(tasks.first.currentStreak, 3);
       expect(tasks.first.bestStreak, 3);
       expect(tasks.first.totalCompletions, 3);
     });
 
-    test('repetition is stored as a stable integer, not an enum index', () async {
-      final id = await createTask(repetition: TaskRepetition.weekly);
+    test(
+      'repetition is stored as a stable integer, not an enum index',
+      () async {
+        final id = await createTask(repetition: TaskRepetition.weekly);
 
-      final raw = await db
-          .customSelect(
-            'SELECT repetition FROM streak_tasks WHERE id = ?',
-            variables: [Variable.withInt(id)],
-          )
-          .getSingle();
+        final raw = await db
+            .customSelect(
+              'SELECT repetition FROM streak_tasks WHERE id = ?',
+              variables: [Variable.withInt(id)],
+            )
+            .getSingle();
 
-      expect(raw.read<int>('repetition'), TaskRepetition.weekly.dbValue);
-    });
+        expect(raw.read<int>('repetition'), TaskRepetition.weekly.dbValue);
+      },
+    );
 
     test('an unknown stored repetition falls back to daily', () {
       expect(TaskRepetition.fromDb(0), TaskRepetition.daily);
@@ -300,20 +314,17 @@ void main() {
 
       final rows = await db.select(db.completions).get();
       expect(rows, hasLength(3));
-      expect(
-        rows.map((r) => r.day).toSet(),
-        {
-          TaskDao.dayKey(daysAgo(3)),
-          TaskDao.dayKey(daysAgo(2)),
-          TaskDao.dayKey(daysAgo(1)),
-        },
-      );
+      expect(rows.map((r) => r.day).toSet(), {
+        TaskDao.dayKey(daysAgo(3)),
+        TaskDao.dayKey(daysAgo(2)),
+        TaskDao.dayKey(daysAgo(1)),
+      });
       // Each row also knows when it was written.
       expect(rows.every((r) => r.completedAt.year > 2000), isTrue);
     });
 
     test('the log is the source of the streak figures', () async {
-      final id = await createTask();
+      final id = await createTask(createdAt: daysAgo(30));
       await dao.toggleCompletion(id, daysAgo(1));
       await dao.toggleCompletion(id, daysAgo(0));
 
@@ -353,19 +364,22 @@ void main() {
       expect(tasks.first.task.importance, TaskImportance.normal);
     });
 
-    test('importance is stored as a stable integer, not an enum index', () async {
-      final id = await createTask(importance: TaskImportance.critical);
+    test(
+      'importance is stored as a stable integer, not an enum index',
+      () async {
+        final id = await createTask(importance: TaskImportance.critical);
 
-      // Read the raw column, bypassing the converter.
-      final raw = await db
-          .customSelect(
-            'SELECT importance FROM streak_tasks WHERE id = ?',
-            variables: [Variable.withInt(id)],
-          )
-          .getSingle();
+        // Read the raw column, bypassing the converter.
+        final raw = await db
+            .customSelect(
+              'SELECT importance FROM streak_tasks WHERE id = ?',
+              variables: [Variable.withInt(id)],
+            )
+            .getSingle();
 
-      expect(raw.read<int>('importance'), TaskImportance.critical.dbValue);
-    });
+        expect(raw.read<int>('importance'), TaskImportance.critical.dbValue);
+      },
+    );
 
     test('an unknown stored importance falls back to normal', () {
       expect(TaskImportance.fromDb(0), TaskImportance.normal);

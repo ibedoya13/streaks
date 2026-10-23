@@ -6,9 +6,11 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:streaks/data/database.dart';
 import 'package:streaks/data/task_dao.dart';
 import 'package:streaks/data/task_importance.dart';
+import 'package:streaks/data/task_repetition.dart';
 
-/// Verifies that a database created with the v1 schema is migrated to v2
-/// without losing data, which is what happens to existing installs.
+/// Verifies that a database created with an older schema is migrated to the
+/// current one without losing data, which is what happens to existing
+/// installs.
 void main() {
   late Directory tempDir;
 
@@ -80,7 +82,7 @@ void main() {
     return file;
   }
 
-  test('a v1 database is migrated to v2 keeping its data', () async {
+  test('a v1 database is migrated keeping its data', () async {
     final file = createV1Database();
 
     final db = AppDatabase(NativeDatabase(file), false);
@@ -125,12 +127,111 @@ void main() {
     // The connection is opened lazily, so a query is needed to actually run
     // the migration. Reading `schemaVersion` alone does not open the file.
     await TaskDao(db).loadTasksWithStreaks();
-    expect(db.schemaVersion, 2);
+    expect(db.schemaVersion, 3);
     await db.close();
 
     // Verify the version was actually written to the file.
     final check = sqlite3.open(file.path);
-    expect(check.select('PRAGMA user_version').first.values.first, 2);
+    expect(check.select('PRAGMA user_version').first.values.first, 3);
+    check.close();
+  });
+
+  /// Builds a database with the v2 schema: it has the importance column,
+  /// but no repetition, and the reminder can still be null.
+  File createV2Database() {
+    final file = File('${tempDir.path}/streaks_v2.sqlite');
+    final db = sqlite3.open(file.path);
+
+    db.execute('''
+      CREATE TABLE streak_tasks (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        importance INTEGER NOT NULL DEFAULT 0,
+        reminder_hour INTEGER,
+        reminder_minute INTEGER,
+        created_at INTEGER NOT NULL,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    db.execute('''
+      CREATE TABLE completions (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        day TEXT NOT NULL,
+        completed_at INTEGER NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES streak_tasks (id) ON DELETE CASCADE
+      )
+    ''');
+    db.execute(
+      'CREATE UNIQUE INDEX completions_task_id_day '
+      'ON completions (task_id, day)',
+    );
+
+    final now = DateTime.now();
+    // A task with a reminder.
+    db.execute(
+      'INSERT INTO streak_tasks (title, description, importance, '
+      'reminder_hour, reminder_minute, created_at, is_archived, sort_order) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ['Con aviso', '', 1, 18, 30, now.millisecondsSinceEpoch, 0, 1],
+    );
+    // And one without, which is what the migration has to fix.
+    db.execute(
+      'INSERT INTO streak_tasks (title, description, importance, '
+      'reminder_hour, reminder_minute, created_at, is_archived, sort_order) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ['Sin aviso', '', 0, null, null, now.millisecondsSinceEpoch, 0, 2],
+    );
+
+    db.execute('PRAGMA user_version = 2');
+    db.close();
+    return file;
+  }
+
+  test('a v2 database gets a repetition and a mandatory reminder', () async {
+    final file = createV2Database();
+
+    final db = AppDatabase(NativeDatabase(file), false);
+    final dao = TaskDao(db);
+    final tasks = await dao.loadTasksWithStreaks();
+
+    expect(tasks, hasLength(2));
+
+    // The task that had a reminder kept it.
+    final withReminder = tasks.firstWhere((t) => t.task.title == 'Con aviso');
+    expect(withReminder.task.reminderHour, 18);
+    expect(withReminder.task.reminderMinute, 30);
+    expect(withReminder.task.importance, TaskImportance.critical);
+
+    // The one without got a default instead of a null.
+    final withoutReminder = tasks.firstWhere(
+      (t) => t.task.title == 'Sin aviso',
+    );
+    expect(withoutReminder.task.reminderHour, 9);
+    expect(withoutReminder.task.reminderMinute, 0);
+
+    // Everything became daily, the repetition of the old releases.
+    expect(
+      tasks.every((t) => t.task.repetition == TaskRepetition.daily),
+      isTrue,
+    );
+
+    await db.close();
+  });
+
+  test('the reminder column is not nullable after the migration', () async {
+    final file = createV2Database();
+
+    final db = AppDatabase(NativeDatabase(file), false);
+    await TaskDao(db).loadTasksWithStreaks();
+    await db.close();
+
+    final check = sqlite3.open(file.path);
+    final columns = check.select('PRAGMA table_info(streak_tasks)');
+    final reminder = columns.firstWhere((c) => c['name'] == 'reminder_hour');
+    expect(reminder['notnull'], 1);
     check.close();
   });
 

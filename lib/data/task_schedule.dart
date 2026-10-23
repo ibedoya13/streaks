@@ -1,3 +1,4 @@
+import 'dates.dart';
 import 'task_repetition.dart';
 
 /// The calendar of a recurring task.
@@ -22,8 +23,7 @@ class TaskSchedule {
   int get periodInDays => repetition.periodInDays;
 
   /// The number of days between the anchor and [day].
-  int daysSinceAnchor(DateTime day) =>
-      _dayNumber(day) - _dayNumber(anchor);
+  int daysSinceAnchor(DateTime day) => dayNumber(day) - dayNumber(anchor);
 
   /// The cycle [day] belongs to.
   ///
@@ -95,10 +95,7 @@ class TaskSchedule {
   /// The number of consecutive cycles ending at [cycle] that were completed.
   ///
   /// [completed] holds the cycles in which the task was completed.
-  int streakEndingAt({
-    required Set<int> completed,
-    required int cycle,
-  }) {
+  int streakEndingAt({required Set<int> completed, required int cycle}) {
     var streak = 0;
     var cursor = cycle;
     while (completed.contains(cursor)) {
@@ -133,10 +130,7 @@ class TaskSchedule {
   ///
   /// The streak stays alive while the task is still pending, so it falls
   /// back to the previous cycle when today is due but not done yet.
-  int currentStreak({
-    required Set<int> completed,
-    required DateTime today,
-  }) {
+  int currentStreak({required Set<int> completed, required DateTime today}) {
     final cycle = cycleOf(today);
     if (completed.contains(cycle)) {
       return streakEndingAt(completed: completed, cycle: cycle);
@@ -146,15 +140,4 @@ class TaskSchedule {
     }
     return 0;
   }
-
-  /// The number of days since the epoch for the calendar day of [date].
-  ///
-  /// The date is read as a plain calendar date in UTC, so a daylight saving
-  /// change never shifts the result by a day.
-  static int _dayNumber(DateTime date) =>
-      DateTime.utc(
-        date.year,
-        date.month,
-        date.day,
-      ).millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
 }

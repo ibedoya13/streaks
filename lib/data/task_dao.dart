@@ -15,6 +15,9 @@ class TaskWithStreaks {
     required this.totalCompletions,
     required this.completedToday,
     required this.completedCycles,
+    required this.isForToday,
+    required this.isCycleDone,
+    required this.nextDueDay,
   });
 
   final StreakTask task;
@@ -34,6 +37,20 @@ class TaskWithStreaks {
   /// A cycle is the window between two due days, so for a daily task it is
   /// a single day and for a weekly task a whole week.
   final Set<int> completedCycles;
+
+  /// Whether the task belongs to today's section.
+  ///
+  /// A task belongs to today when it comes due today, or when its current
+  /// cycle is still open, which happens when a due day passed without the
+  /// task being done. The second case keeps a late task visible instead of
+  /// burying it under the tasks of the coming days.
+  final bool isForToday;
+
+  /// Whether the cycle the task is in right now is already done.
+  final bool isCycleDone;
+
+  /// The next day the task comes due on.
+  final DateTime nextDueDay;
 
   /// Whether the task comes due today.
   bool isDueToday([DateTime? today]) =>
@@ -73,9 +90,9 @@ class TaskDao {
   /// Drift re-runs this query automatically whenever `streak_tasks` or
   /// `completions` change, so the UI stays in sync without manual refreshes.
   Stream<List<TaskWithStreaks>> watchTasksWithStreaks() {
-    return _tasksWithCompletions()
-        .watch()
-        .map((rows) => _group(rows, DateTime.now()));
+    return _tasksWithCompletions().watch().map(
+      (rows) => _group(rows, DateTime.now()),
+    );
   }
 
   /// Loads all active tasks with their streak figures, once.
@@ -110,10 +127,7 @@ WHERE t.is_archived = 0
 ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
 ''';
 
-    return db.customSelect(
-      sql,
-      readsFrom: {db.streakTasks, db.completions},
-    );
+    return db.customSelect(sql, readsFrom: {db.streakTasks, db.completions});
   }
 
   /// Groups the joined rows into tasks and computes their streaks.
@@ -162,10 +176,17 @@ ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
         if (cycle >= 0) completedCycles.add(cycle);
       }
 
+      final cycle = schedule.cycleOf(today);
+      final cycleDone = completedCycles.contains(cycle);
+      final dueToday = schedule.isDueOn(today);
+
       result.add(
         TaskWithStreaks(
           task: task,
           schedule: schedule,
+          isForToday: dueToday || !cycleDone,
+          isCycleDone: cycleDone,
+          nextDueDay: schedule.nextDueDay(today),
           currentStreak: schedule.currentStreak(
             completed: completedCycles,
             today: today,
@@ -181,6 +202,11 @@ ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
   }
 
   /// Creates a task and returns its id.
+  ///
+  /// [createdAt] anchors the schedule of the task: the repetition counts
+  /// from that day, so a task created today with an alternate repetition
+  /// comes due today, then in two days, and so on. It only exists so tests
+  /// can build a task that already has a history.
   Future<int> createTask({
     required String title,
     required int reminderHour,
@@ -188,6 +214,7 @@ ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
     String description = '',
     TaskImportance importance = TaskImportance.normal,
     TaskRepetition repetition = TaskRepetition.daily,
+    DateTime? createdAt,
   }) async {
     final last =
         await (db.select(db.streakTasks)
@@ -205,7 +232,7 @@ ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
             repetition: Value(repetition),
             reminderHour: reminderHour,
             reminderMinute: reminderMinute,
-            createdAt: DateTime.now(),
+            createdAt: createdAt ?? DateTime.now(),
             sortOrder: Value(nextOrder),
           ),
         );

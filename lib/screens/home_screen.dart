@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/dates.dart';
 import '../data/database.dart';
 import '../data/task_dao.dart';
 import '../data/task_importance.dart';
@@ -11,7 +12,9 @@ import '../theme.dart';
 import '../widgets/add_task_sheet.dart';
 import '../widgets/flame_logo.dart';
 import '../widgets/importance_selector.dart';
+import '../widgets/section_header.dart';
 import '../widgets/task_card.dart';
+import 'task_detail_screen.dart';
 
 /// First screen of the app: the list of recurring tasks and their streaks.
 ///
@@ -108,11 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await _reschedule();
   }
 
-  Future<void> _deleteTask(int taskId) async {
-    await _dao.deleteTask(taskId);
-    await _reschedule();
-  }
-
   /// Re-schedules the reminders after a change in the tasks.
   Future<void> _reschedule() async {
     try {
@@ -122,6 +120,39 @@ class _HomeScreenState extends State<HomeScreen> {
     } on Object {
       // Ignore failures; the next resume re-schedules.
     }
+  }
+
+  /// Opens the detail view of a task.
+  Future<void> _openDetail(TaskWithStreaks entry) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TaskDetailScreen(
+          tasks: _dao.watchTasksWithStreaks(),
+          taskId: entry.task.id,
+          onDelete: _deleteTask,
+        ),
+      ),
+    );
+    // The detail view may have deleted the task, so the reminders are
+    // re-scheduled when it closes.
+    await _reschedule();
+  }
+
+  /// Deletes a task and drops its pending reminders.
+  Future<void> _deleteTask(int taskId) async {
+    await _dao.deleteTask(taskId);
+    await _reschedule();
+  }
+
+  /// Builds the card of a task.
+  Widget _card(TaskWithStreaks entry, {String? dueLabel}) {
+    return TaskCard(
+      entry: entry,
+      dueLabel: dueLabel,
+      onToggle: () => _toggleTask(entry.task.id),
+      onOpenDetail: () => _openDetail(entry),
+      onEditImportance: () => _editImportance(entry),
+    );
   }
 
   Future<void> _openAddSheet() async {
@@ -228,28 +259,55 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           final tasks = snapshot.data!;
-          final doneCount = tasks.where((t) => t.completedToday).length;
+          final today = DateTime.now();
+
+          // The tasks of today come first, then the ones that come due on
+          // the coming days, ordered by the day they are due on.
+          final forToday = tasks.where((t) => t.isForToday).toList();
+          final comingUp = tasks.where((t) => !t.isForToday).toList()
+            ..sort((a, b) => a.nextDueDay.compareTo(b.nextDueDay));
+
+          final doneCount = forToday.where((t) => t.isCycleDone).length;
 
           return Column(
             children: [
               if (tasks.isNotEmpty)
-                _ProgressHeader(done: doneCount, total: tasks.length),
+                _ProgressHeader(done: doneCount, total: forToday.length),
               Expanded(
                 child: tasks.isEmpty
                     ? _EmptyState(onAdd: _openAddSheet)
-                    : ListView.separated(
+                    : ListView(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                        itemCount: tasks.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final entry = tasks[index];
-                          return TaskCard(
-                            entry: entry,
-                            onToggle: () => _toggleTask(entry.task.id),
-                            onDelete: () => _deleteTask(entry.task.id),
-                            onEditImportance: () => _editImportance(entry),
-                          );
-                        },
+                        children: [
+                          if (forToday.isNotEmpty) ...[
+                            SectionHeader(
+                              title: 'Hoy',
+                              count: forToday.length,
+                              icon: Icons.today_outlined,
+                            ),
+                            for (final entry in forToday) ...[
+                              _card(entry),
+                              const SizedBox(height: 12),
+                            ],
+                          ],
+                          if (comingUp.isNotEmpty) ...[
+                            SectionHeader(
+                              title: 'Próximos días',
+                              count: comingUp.length,
+                              icon: Icons.event_outlined,
+                            ),
+                            for (final entry in comingUp) ...[
+                              _card(
+                                entry,
+                                dueLabel: relativeDayLabel(
+                                  entry.nextDueDay,
+                                  today,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ],
+                        ],
                       ),
               ),
             ],

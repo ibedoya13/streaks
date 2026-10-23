@@ -131,7 +131,9 @@ class AppDatabase extends _$AppDatabase {
         description: const Value('Rutina diaria de hidratación'),
         reminderHour: 9,
         reminderMinute: 0,
-        createdAt: now,
+        // The schedule is anchored on the creation date, so the task has to
+        // exist from before its first completion for the history to count.
+        createdAt: dayOffset(3),
         sortOrder: const Value(1),
       ),
     );
@@ -142,7 +144,7 @@ class AppDatabase extends _$AppDatabase {
         description: const Value('Salir a caminar o correr'),
         reminderHour: 18,
         reminderMinute: 30,
-        createdAt: now,
+        createdAt: dayOffset(1),
         sortOrder: const Value(2),
       ),
     );
