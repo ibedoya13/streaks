@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streaks/data/task_importance.dart';
+import 'package:streaks/data/task_repetition.dart';
 import 'package:streaks/theme.dart';
 import 'package:streaks/widgets/add_task_sheet.dart';
 
@@ -30,8 +31,9 @@ void main() {
                       required String title,
                       required String description,
                       required TaskImportance importance,
-                      int? reminderHour,
-                      int? reminderMinute,
+                      required TaskRepetition repetition,
+                      required int reminderHour,
+                      required int reminderMinute,
                     }) async {},
                   ),
                 ),
@@ -97,8 +99,9 @@ void main() {
                     required String title,
                     required String description,
                     required TaskImportance importance,
-                    int? reminderHour,
-                    int? reminderMinute,
+                    required TaskRepetition repetition,
+                    required int reminderHour,
+                    required int reminderMinute,
                   }) async {},
                 ),
               ),

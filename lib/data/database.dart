@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import 'connection.dart';
 import 'task_importance.dart';
+import 'task_repetition.dart';
 
 part 'database.g.dart';
 
@@ -25,10 +26,16 @@ class StreakTasks extends Table {
       .map(const TaskImportanceConverter())
       .withDefault(const Constant(TaskImportance.normalDbValue))();
 
-  /// Local time of the daily reminder; null when no reminder is scheduled.
-  IntColumn get reminderHour => integer().nullable()();
+  /// How often the task comes due.
+  IntColumn get repetition => integer()
+      .map(const TaskRepetitionConverter())
+      .withDefault(const Constant(TaskRepetition.dailyDbValue))();
 
-  IntColumn get reminderMinute => integer().nullable()();
+  /// Local time of the daily reminder. Every task has one.
+  IntColumn get reminderHour => integer()();
+
+  /// Local time of the daily reminder. Every task has one.
+  IntColumn get reminderMinute => integer()();
 
   /// When the task was created, used as the lower bound for streak maths.
   DateTimeColumn get createdAt => dateTime()();
@@ -71,7 +78,7 @@ class AppDatabase extends _$AppDatabase {
   final bool _seedExampleData;
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -84,6 +91,24 @@ class AppDatabase extends _$AppDatabase {
       // `normal`, which is what the column default already says.
       if (from < 2) {
         await m.addColumn(streakTasks, streakTasks.importance);
+      }
+      // v2 -> v3: tasks gained a repetition and the reminder became
+      // mandatory.
+      if (from < 3) {
+        await m.addColumn(streakTasks, streakTasks.repetition);
+
+        // The reminder time used to be optional. Give the tasks that have
+        // none a default before the columns become NOT NULL, because
+        // SQLite cannot copy a NULL into a NOT NULL column.
+        await customStatement(
+          'UPDATE streak_tasks SET reminder_hour = 9 WHERE reminder_hour IS NULL',
+        );
+        await customStatement(
+          'UPDATE streak_tasks SET reminder_minute = 0 WHERE reminder_minute IS NULL',
+        );
+
+        // Rebuilding the table is the only way to make a column NOT NULL.
+        await m.alterTable(TableMigration(streakTasks));
       }
     },
     beforeOpen: (details) async {
@@ -104,8 +129,8 @@ class AppDatabase extends _$AppDatabase {
       StreakTasksCompanion.insert(
         title: 'Tomar 2 litros de agua',
         description: const Value('Rutina diaria de hidratación'),
-        reminderHour: const Value(9),
-        reminderMinute: const Value(0),
+        reminderHour: 9,
+        reminderMinute: 0,
         createdAt: now,
         sortOrder: const Value(1),
       ),
@@ -115,8 +140,8 @@ class AppDatabase extends _$AppDatabase {
       StreakTasksCompanion.insert(
         title: 'Caminar 30 minutos',
         description: const Value('Salir a caminar o correr'),
-        reminderHour: const Value(18),
-        reminderMinute: const Value(30),
+        reminderHour: 18,
+        reminderMinute: 30,
         createdAt: now,
         sortOrder: const Value(2),
       ),

@@ -64,13 +64,17 @@ class ReminderScheduler {
   }
 
   /// Whether a task still needs a reminder scheduled.
+  ///
+  /// A task that is already done for the current cycle needs no reminder:
+  /// the next one is scheduled when the app comes back to the foreground.
   bool _needsReminder(TaskWithStreaks entry) {
-    final task = entry.task;
-    if (task.reminderHour == null || task.reminderMinute == null) {
-      return false;
-    }
-    // Already done today: nothing to remind about.
-    if (entry.completedToday) return false;
+    final schedule = entry.schedule;
+    final today = DateTime.now();
+
+    // The cycle the task is in right now.
+    final cycle = schedule.cycleOf(today);
+    if (entry.completedCycles.contains(cycle)) return false;
+
     return true;
   }
 
@@ -80,9 +84,10 @@ class ReminderScheduler {
       taskId: task.id,
       title: task.title,
       body: _bodyFor(entry),
-      hour: task.reminderHour!,
-      minute: task.reminderMinute!,
+      hour: task.reminderHour,
+      minute: task.reminderMinute,
       importance: task.importance,
+      schedule: entry.schedule,
     );
   }
 

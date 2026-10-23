@@ -2,30 +2,50 @@ import 'package:drift/drift.dart';
 
 import 'database.dart';
 import 'task_importance.dart';
+import 'task_repetition.dart';
+import 'task_schedule.dart';
 
 /// A task together with its computed streak figures.
 class TaskWithStreaks {
   const TaskWithStreaks({
     required this.task,
+    required this.schedule,
     required this.currentStreak,
     required this.bestStreak,
     required this.totalCompletions,
     required this.completedToday,
+    required this.completedCycles,
   });
 
   final StreakTask task;
+
+  /// The calendar of the task, used to know when it comes due.
+  final TaskSchedule schedule;
+
   final int currentStreak;
   final int bestStreak;
   final int totalCompletions;
+
+  /// Whether the task was completed today, whatever its repetition is.
   final bool completedToday;
+
+  /// The cycles in which the task was completed.
+  ///
+  /// A cycle is the window between two due days, so for a daily task it is
+  /// a single day and for a weekly task a whole week.
+  final Set<int> completedCycles;
+
+  /// Whether the task comes due today.
+  bool isDueToday([DateTime? today]) =>
+      schedule.isDueOn(today ?? DateTime.now());
 }
 
 /// Data access for tasks and their completions.
 ///
-/// The streak maths runs in SQL rather than in Dart. "How many consecutive
-/// days end today?" is a gap-and-islands problem: SQLite answers it with a
-/// window function in a single pass over the completions table, so the Dart
-/// side never has to load the history into memory.
+/// Every completion is stored as a row, which is the event log a future
+/// streak view will read from. The streak figures shown today are derived
+/// from that log through [TaskSchedule], which knows how the days of a task
+/// group into cycles.
 class TaskDao {
   TaskDao(this.db);
 
@@ -53,118 +73,121 @@ class TaskDao {
   /// Drift re-runs this query automatically whenever `streak_tasks` or
   /// `completions` change, so the UI stays in sync without manual refreshes.
   Stream<List<TaskWithStreaks>> watchTasksWithStreaks() {
-    final today = dayKey(DateTime.now());
-    final yesterday = dayKey(DateTime.now().subtract(const Duration(days: 1)));
-
-    return _streakSelect(
-      today,
-      yesterday,
-    ).watch().map((rows) => rows.map(_mapRow).toList(growable: false));
+    return _tasksWithCompletions()
+        .watch()
+        .map((rows) => _group(rows, DateTime.now()));
   }
 
   /// Loads all active tasks with their streak figures, once.
   Future<List<TaskWithStreaks>> loadTasksWithStreaks() async {
-    final today = dayKey(DateTime.now());
-    final yesterday = dayKey(DateTime.now().subtract(const Duration(days: 1)));
-    final rows = await _streakSelect(today, yesterday).get();
-    return rows.map(_mapRow).toList(growable: false);
+    final rows = await _tasksWithCompletions().get();
+    return _group(rows, DateTime.now());
   }
 
-  /// The streak query.
+  /// The query behind the task list.
   ///
-  /// The `islands` CTE groups consecutive completion days into runs: the day
-  /// number minus the row number is constant within a run and differs between
-  /// runs, so grouping by it yields the runs directly.
-  ///
-  /// The current streak is the run that ends today, or that ended yesterday
-  /// (the streak stays alive until the end of today). The best streak is the
-  /// longest run ever.
-  Selectable<QueryRow> _streakSelect(String today, String yesterday) {
+  /// It joins every active task with its completions, so a single watch
+  /// covers both tables. The streak figures are computed in Dart because the
+  /// schedule of a task (daily, alternate or weekly) decides how the days
+  /// group into cycles.
+  Selectable<QueryRow> _tasksWithCompletions() {
     const sql = '''
-WITH days AS (
-  SELECT task_id, CAST(julianday(day) AS INTEGER) AS d
-  FROM completions
-),
-islands AS (
-  SELECT
-    task_id,
-    d,
-    d - ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY d) AS grp
-  FROM days
-),
-runs AS (
-  SELECT task_id, grp, COUNT(*) AS len, MAX(d) AS last_day
-  FROM islands
-  GROUP BY task_id, grp
-)
 SELECT
   t.id AS id,
   t.title AS title,
   t.description AS description,
   t.importance AS importance,
+  t.repetition AS repetition,
   t.reminder_hour AS reminder_hour,
   t.reminder_minute AS reminder_minute,
   t.created_at AS created_at,
   t.is_archived AS is_archived,
   t.sort_order AS sort_order,
-  COALESCE(
-    (SELECT r.len FROM runs r
-      WHERE r.task_id = t.id
-        AND r.last_day IN (CAST(julianday(?1) AS INTEGER),
-                           CAST(julianday(?2) AS INTEGER))
-      ORDER BY r.last_day DESC
-      LIMIT 1),
-    0
-  ) AS current_streak,
-  COALESCE((SELECT MAX(r.len) FROM runs r WHERE r.task_id = t.id), 0)
-    AS best_streak,
-  (SELECT COUNT(*) FROM completions c WHERE c.task_id = t.id)
-    AS total_completions,
-  EXISTS(
-    SELECT 1 FROM completions c
-    WHERE c.task_id = t.id AND c.day = ?1
-  ) AS completed_today
+  c.day AS day
 FROM streak_tasks t
+LEFT JOIN completions c ON c.task_id = t.id
 WHERE t.is_archived = 0
-ORDER BY t.sort_order ASC, t.id ASC
+ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
 ''';
 
     return db.customSelect(
       sql,
-      variables: [Variable.withString(today), Variable.withString(yesterday)],
       readsFrom: {db.streakTasks, db.completions},
     );
   }
 
-  TaskWithStreaks _mapRow(QueryRow row) {
-    return TaskWithStreaks(
-      task: StreakTask(
-        id: row.read<int>('id'),
-        title: row.read<String>('title'),
-        description: row.read<String>('description'),
-        // The converter is not applied to custom queries, so the raw stored
-        // integer is mapped by hand here.
-        importance: TaskImportance.fromDb(row.read<int>('importance')),
-        reminderHour: row.readNullable<int>('reminder_hour'),
-        reminderMinute: row.readNullable<int>('reminder_minute'),
-        createdAt: row.read<DateTime>('created_at'),
-        isArchived: row.read<bool>('is_archived'),
-        sortOrder: row.read<int>('sort_order'),
-      ),
-      currentStreak: row.read<int>('current_streak'),
-      bestStreak: row.read<int>('best_streak'),
-      totalCompletions: row.read<int>('total_completions'),
-      completedToday: row.read<bool>('completed_today'),
-    );
+  /// Groups the joined rows into tasks and computes their streaks.
+  List<TaskWithStreaks> _group(List<QueryRow> rows, DateTime today) {
+    final grouped = <int, List<QueryRow>>{};
+    for (final row in rows) {
+      grouped.putIfAbsent(row.read<int>('id'), () => []).add(row);
+    }
+
+    final result = <TaskWithStreaks>[];
+    for (final entry in grouped.entries) {
+      final first = entry.value.first;
+      final task = StreakTask(
+        id: first.read<int>('id'),
+        title: first.read<String>('title'),
+        description: first.read<String>('description'),
+        // The converters are not applied to custom queries, so the raw
+        // stored integers are mapped by hand here.
+        importance: TaskImportance.fromDb(first.read<int>('importance')),
+        repetition: TaskRepetition.fromDb(first.read<int>('repetition')),
+        reminderHour: first.read<int>('reminder_hour'),
+        reminderMinute: first.read<int>('reminder_minute'),
+        createdAt: first.read<DateTime>('created_at'),
+        isArchived: first.read<bool>('is_archived'),
+        sortOrder: first.read<int>('sort_order'),
+      );
+
+      final schedule = TaskSchedule(
+        anchor: DateTime(
+          task.createdAt.year,
+          task.createdAt.month,
+          task.createdAt.day,
+        ),
+        repetition: task.repetition,
+      );
+
+      final days = <String>[];
+      for (final row in entry.value) {
+        final day = row.readNullable<String>('day');
+        if (day != null) days.add(day);
+      }
+
+      final completedCycles = <int>{};
+      for (final day in days) {
+        final cycle = schedule.cycleOf(parseDay(day));
+        if (cycle >= 0) completedCycles.add(cycle);
+      }
+
+      result.add(
+        TaskWithStreaks(
+          task: task,
+          schedule: schedule,
+          currentStreak: schedule.currentStreak(
+            completed: completedCycles,
+            today: today,
+          ),
+          bestStreak: schedule.bestStreak(completed: completedCycles),
+          totalCompletions: days.length,
+          completedToday: days.contains(dayKey(today)),
+          completedCycles: completedCycles,
+        ),
+      );
+    }
+    return result;
   }
 
   /// Creates a task and returns its id.
   Future<int> createTask({
     required String title,
+    required int reminderHour,
+    required int reminderMinute,
     String description = '',
     TaskImportance importance = TaskImportance.normal,
-    int? reminderHour,
-    int? reminderMinute,
+    TaskRepetition repetition = TaskRepetition.daily,
   }) async {
     final last =
         await (db.select(db.streakTasks)
@@ -179,8 +202,9 @@ ORDER BY t.sort_order ASC, t.id ASC
             title: title,
             description: Value(description),
             importance: Value(importance),
-            reminderHour: Value(reminderHour),
-            reminderMinute: Value(reminderMinute),
+            repetition: Value(repetition),
+            reminderHour: reminderHour,
+            reminderMinute: reminderMinute,
             createdAt: DateTime.now(),
             sortOrder: Value(nextOrder),
           ),
@@ -194,7 +218,17 @@ ORDER BY t.sort_order ASC, t.id ASC
     );
   }
 
+  /// Changes how often a task comes due.
+  Future<void> updateRepetition(int taskId, TaskRepetition repetition) async {
+    await (db.update(db.streakTasks)..where((t) => t.id.equals(taskId))).write(
+      StreakTasksCompanion(repetition: Value(repetition)),
+    );
+  }
+
   /// Marks a day as completed, or un-completes it if it was already done.
+  ///
+  /// Every completion is stored, which is the event log a future streak view
+  /// will read from.
   Future<void> toggleCompletion(int taskId, DateTime day) async {
     final key = dayKey(day);
     final existing =

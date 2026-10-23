@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../data/task_importance.dart';
+import '../data/task_repetition.dart';
 import 'importance_selector.dart';
+import 'repetition_selector.dart';
 
 /// Payload for a newly created task.
 typedef NewTaskData = Future<void> Function({
   required String title,
   required String description,
   required TaskImportance importance,
-  int? reminderHour,
-  int? reminderMinute,
+  required TaskRepetition repetition,
+  required int reminderHour,
+  required int reminderMinute,
 });
 
 /// Bottom sheet used to create a new recurring task.
@@ -27,9 +30,11 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  bool _reminderEnabled = false;
-  TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TaskImportance _importance = TaskImportance.normal;
+  TaskRepetition _repetition = TaskRepetition.daily;
+
+  /// The reminder is mandatory, so there is a time from the start.
+  TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
 
   @override
   void dispose() {
@@ -44,8 +49,9 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
       title: _titleController.text.trim(),
       description: _descriptionController.text.trim(),
       importance: _importance,
-      reminderHour: _reminderEnabled ? _reminderTime.hour : null,
-      reminderMinute: _reminderEnabled ? _reminderTime.minute : null,
+      repetition: _repetition,
+      reminderHour: _reminderTime.hour,
+      reminderMinute: _reminderTime.minute,
     );
     if (mounted) Navigator.of(context).pop();
   }
@@ -111,8 +117,40 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                   prefixIcon: Icon(Icons.notes),
                 ),
               ),
+              const SizedBox(height: 20),
+              Text(
+                'Recordatorio',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
               const SizedBox(height: 8),
-              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: _reminderTime,
+                  );
+                  if (picked != null) setState(() => _reminderTime = picked);
+                },
+                icon: const Icon(Icons.schedule),
+                label: Text('Hora del aviso: ${_reminderTime.format(context)}'),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Repetición',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              RepetitionSelector(
+                value: _repetition,
+                onChanged: (value) => setState(() => _repetition = value),
+              ),
+              const SizedBox(height: 20),
               Text(
                 'Importancia',
                 style: theme.textTheme.labelLarge?.copyWith(
@@ -126,29 +164,6 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                 onChanged: (value) => setState(() => _importance = value),
               ),
               const SizedBox(height: 16),
-              SwitchListTile(
-                value: _reminderEnabled,
-                onChanged: (value) => setState(() => _reminderEnabled = value),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Recordatorio diario'),
-                subtitle: const Text(
-                  'Recibirás un aviso aunque no abras la app',
-                ),
-              ),
-              if (_reminderEnabled)
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: _reminderTime,
-                    );
-                    if (picked != null) setState(() => _reminderTime = picked);
-                  },
-                  icon: const Icon(Icons.schedule),
-                  label: Text(
-                    'Hora del aviso: ${_reminderTime.format(context)}',
-                  ),
-                ),
               const SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: _submit,

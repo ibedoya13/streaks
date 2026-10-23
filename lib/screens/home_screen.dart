@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/database.dart';
 import '../data/task_dao.dart';
 import '../data/task_importance.dart';
+import '../data/task_repetition.dart';
 import '../notifications/app_lifecycle_observer.dart';
 import '../notifications/notification_service.dart';
 import '../notifications/reminder_scheduler.dart';
@@ -87,13 +88,15 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title,
     required String description,
     required TaskImportance importance,
-    int? reminderHour,
-    int? reminderMinute,
+    required TaskRepetition repetition,
+    required int reminderHour,
+    required int reminderMinute,
   }) async {
     await _dao.createTask(
       title: title,
       description: description,
       importance: importance,
+      repetition: repetition,
       reminderHour: reminderHour,
       reminderMinute: reminderMinute,
     );

@@ -6,6 +6,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/task_importance.dart';
+import '../data/task_schedule.dart';
 
 /// Schedules the reminders for the user's tasks.
 ///
@@ -154,6 +155,7 @@ class NotificationService {
     required int hour,
     required int minute,
     required TaskImportance importance,
+    required TaskSchedule schedule,
     DateTime? from,
   }) async {
     await initialize();
@@ -162,26 +164,23 @@ class NotificationService {
     await cancelTask(taskId);
 
     final now = from ?? DateTime.now();
-    var first = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
+
+    // The reminder only fires on a day the task comes due, so the first
+    // occurrence is the next due day whose time has not passed yet.
+    final firstLocal = schedule.nextReminderAt(
+      hour: hour,
+      minute: minute,
+      now: now,
     );
 
-    // If the time already passed today, start from the next day.
-    if (!first.isAfter(tz.TZDateTime.now(tz.local))) {
-      first = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day + 1,
-        hour,
-        minute,
-      );
-    }
+    final first = tz.TZDateTime(
+      tz.local,
+      firstLocal.year,
+      firstLocal.month,
+      firstLocal.day,
+      firstLocal.hour,
+      firstLocal.minute,
+    );
 
     final repeats = repeatCountFor(importance);
     final interval = importance.reminderInterval ?? Duration.zero;

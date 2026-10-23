@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streaks/data/database.dart';
 import 'package:streaks/data/task_dao.dart';
 import 'package:streaks/data/task_importance.dart';
+import 'package:streaks/data/task_repetition.dart';
+import 'package:streaks/data/task_schedule.dart';
 import 'package:streaks/notifications/notification_service.dart';
 import 'package:streaks/notifications/reminder_scheduler.dart';
 
@@ -12,6 +14,10 @@ import 'package:streaks/notifications/reminder_scheduler.dart';
 class _FakeNotificationService extends NotificationService {
   final List<int> scheduled = [];
   final List<int> cancelled = [];
+
+  /// The moment each reminder would fire, in the same way the real service
+  /// calculates it.
+  final List<DateTime> fireTimes = [];
 
   /// The ids the fake operating system currently holds, mirroring what
   /// `pendingNotificationRequests` returns on a real device.
@@ -36,16 +42,24 @@ class _FakeNotificationService extends NotificationService {
     required int hour,
     required int minute,
     required TaskImportance importance,
+    required TaskSchedule schedule,
     DateTime? from,
   }) async {
     // The real service cancels the previous reminders before scheduling the
     // new ones, which is what keeps a reschedule from piling them up.
     await cancelTask(taskId);
 
+    final first = schedule.nextReminderAt(
+      hour: hour,
+      minute: minute,
+      now: from ?? DateTime.now(),
+    );
+
     final repeats = NotificationService.repeatCountFor(importance);
     for (var slot = 0; slot < repeats; slot++) {
       final id = taskId * NotificationService.idStride + slot;
       scheduled.add(id);
+      fireTimes.add(first);
       pendingIds.add(id);
     }
   }
@@ -155,12 +169,40 @@ void main() {
     expect(NotificationService.repeatCountFor(TaskImportance.normal), 1);
   });
 
-  test('a task without a reminder time gets nothing scheduled', () async {
-    await dao.createTask(title: 'Sin recordatorio');
+  test('a reminder only fires on a day the task comes due on', () async {
+    await dao.createTask(
+      title: 'Alterna',
+      repetition: TaskRepetition.alternate,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
 
     await scheduler.rescheduleAll();
 
-    expect(service.scheduled, isEmpty);
+    expect(service.fireTimes, hasLength(1));
+    final tasks = await dao.loadTasksWithStreaks();
+    expect(
+      tasks.first.schedule.isDueOn(service.fireTimes.first),
+      isTrue,
+    );
+  });
+
+  test('a weekly task is only reminded on its due day', () async {
+    await dao.createTask(
+      title: 'Semanal',
+      repetition: TaskRepetition.weekly,
+      reminderHour: 9,
+      reminderMinute: 0,
+    );
+
+    await scheduler.rescheduleAll();
+
+    expect(service.fireTimes, hasLength(1));
+    final tasks = await dao.loadTasksWithStreaks();
+    expect(
+      tasks.first.schedule.isDueOn(service.fireTimes.first),
+      isTrue,
+    );
   });
 
   test('a task completed today gets no reminder', () async {

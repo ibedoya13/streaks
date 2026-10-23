@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streaks/data/database.dart';
 import 'package:streaks/data/task_dao.dart';
 import 'package:streaks/data/task_importance.dart';
+import 'package:streaks/data/task_repetition.dart';
 
 void main() {
   late AppDatabase db;
@@ -23,15 +24,37 @@ void main() {
     return DateTime(now.year, now.month, now.day - n);
   }
 
-  Future<void> taskWithHistory(List<DateTime> days) async {
-    final taskId = await dao.createTask(title: 'Tarea');
+  /// Creates a task, giving it the mandatory reminder when none is passed.
+  Future<int> createTask({
+    String title = 'Tarea',
+    int reminderHour = 9,
+    int reminderMinute = 0,
+    String description = '',
+    TaskImportance importance = TaskImportance.normal,
+    TaskRepetition repetition = TaskRepetition.daily,
+  }) {
+    return dao.createTask(
+      title: title,
+      description: description,
+      importance: importance,
+      repetition: repetition,
+      reminderHour: reminderHour,
+      reminderMinute: reminderMinute,
+    );
+  }
+
+  Future<void> taskWithHistory(
+    List<DateTime> days, {
+    TaskRepetition repetition = TaskRepetition.daily,
+  }) async {
+    final taskId = await createTask(repetition: repetition);
     for (final day in days) {
       await dao.toggleCompletion(taskId, day);
     }
   }
 
   test('creates a task and reads it back', () async {
-    await dao.createTask(
+    await createTask(
       title: 'Tomar agua',
       description: '2 litros',
       reminderHour: 9,
@@ -48,8 +71,16 @@ void main() {
     expect(tasks.first.completedToday, isFalse);
   });
 
+  test('every task has a reminder', () async {
+    await createTask(title: 'Con aviso', reminderHour: 7, reminderMinute: 45);
+
+    final tasks = await dao.loadTasksWithStreaks();
+    expect(tasks.first.task.reminderHour, 7);
+    expect(tasks.first.task.reminderMinute, 45);
+  });
+
   test('toggle marks and unmarks today', () async {
-    final id = await dao.createTask(title: 'Tarea');
+    final id = await createTask();
 
     await dao.toggleCompletion(id, DateTime.now());
     var tasks = await dao.loadTasksWithStreaks();
@@ -106,7 +137,7 @@ void main() {
   });
 
   test('archived tasks disappear from the list', () async {
-    final id = await dao.createTask(title: 'Temporal');
+    final id = await createTask(title: 'Temporal');
     expect(await dao.loadTasksWithStreaks(), hasLength(1));
 
     await dao.archiveTask(id);
@@ -114,7 +145,7 @@ void main() {
   });
 
   test('deleting a task removes its completions', () async {
-    final id = await dao.createTask(title: 'Temporal');
+    final id = await createTask(title: 'Temporal');
     await dao.toggleCompletion(id, DateTime.now());
 
     await dao.deleteTask(id);
@@ -125,7 +156,7 @@ void main() {
   });
 
   test('the stream emits again when a completion is toggled', () async {
-    final id = await dao.createTask(title: 'Tarea');
+    final id = await createTask();
 
     final emissions = <int>[];
     final subscription = dao.watchTasksWithStreaks().listen((tasks) {
@@ -150,75 +181,217 @@ void main() {
     expect(parsed, DateTime(2026, 10, 21));
   });
 
-  test('a new task defaults to normal importance', () async {
-    await dao.createTask(title: 'Tarea');
+  group('repetition', () {
+    test('a new task is daily', () async {
+      await createTask();
 
-    final tasks = await dao.loadTasksWithStreaks();
-    expect(tasks.first.task.importance, TaskImportance.normal);
-    expect(tasks.first.task.importance.repeats, isFalse);
+      final tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.repetition, TaskRepetition.daily);
+    });
+
+    test('the repetition can be chosen when creating a task', () async {
+      await createTask(repetition: TaskRepetition.alternate);
+      await createTask(repetition: TaskRepetition.weekly);
+
+      final tasks = await dao.loadTasksWithStreaks();
+      expect(tasks[0].task.repetition, TaskRepetition.alternate);
+      expect(tasks[1].task.repetition, TaskRepetition.weekly);
+    });
+
+    test('the repetition of a task can be changed', () async {
+      final id = await createTask();
+
+      await dao.updateRepetition(id, TaskRepetition.weekly);
+      var tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.repetition, TaskRepetition.weekly);
+
+      await dao.updateRepetition(id, TaskRepetition.daily);
+      tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.repetition, TaskRepetition.daily);
+    });
+
+    test('an alternate task only comes due every other day', () async {
+      await createTask(repetition: TaskRepetition.alternate);
+
+      final tasks = await dao.loadTasksWithStreaks();
+      final schedule = tasks.first.schedule;
+
+      // The anchor is the day the task was created.
+      expect(schedule.isDueOn(tasks.first.task.createdAt), isTrue);
+      expect(
+        schedule.isDueOn(tasks.first.task.createdAt.add(const Duration(days: 1))),
+        isFalse,
+      );
+      expect(
+        schedule.isDueOn(tasks.first.task.createdAt.add(const Duration(days: 2))),
+        isTrue,
+      );
+
+      // The day after the creation is not due, so the task is not due today
+      // unless today happens to be an even day.
+      final today = DateTime.now();
+      final daysSinceCreation = today.difference(tasks.first.task.createdAt).inDays;
+      expect(schedule.isDueOn(today), daysSinceCreation.isEven);
+    });
+
+    test('a weekly task only comes due once a week', () async {
+      await createTask(repetition: TaskRepetition.weekly);
+
+      final tasks = await dao.loadTasksWithStreaks();
+      final schedule = tasks.first.schedule;
+      final created = tasks.first.task.createdAt;
+
+      expect(schedule.isDueOn(created), isTrue);
+      expect(
+        schedule.isDueOn(created.add(const Duration(days: 6))),
+        isFalse,
+      );
+      expect(
+        schedule.isDueOn(created.add(const Duration(days: 7))),
+        isTrue,
+      );
+    });
+
+    test('the streak of an alternate task counts cycles, not days', () async {
+      // A task created today, completed on the days that come due.
+      final id = await createTask(repetition: TaskRepetition.alternate);
+      final created = (await dao.loadTasksWithStreaks()).first.task.createdAt;
+
+      await dao.toggleCompletion(id, created);
+      await dao.toggleCompletion(id, created.add(const Duration(days: 2)));
+      await dao.toggleCompletion(id, created.add(const Duration(days: 4)));
+
+      final tasks = await dao.loadTasksWithStreaks();
+      // Three cycles in a row.
+      expect(tasks.first.currentStreak, 3);
+      expect(tasks.first.bestStreak, 3);
+      expect(tasks.first.totalCompletions, 3);
+    });
+
+    test('repetition is stored as a stable integer, not an enum index', () async {
+      final id = await createTask(repetition: TaskRepetition.weekly);
+
+      final raw = await db
+          .customSelect(
+            'SELECT repetition FROM streak_tasks WHERE id = ?',
+            variables: [Variable.withInt(id)],
+          )
+          .getSingle();
+
+      expect(raw.read<int>('repetition'), TaskRepetition.weekly.dbValue);
+    });
+
+    test('an unknown stored repetition falls back to daily', () {
+      expect(TaskRepetition.fromDb(0), TaskRepetition.daily);
+      expect(TaskRepetition.fromDb(1), TaskRepetition.alternate);
+      expect(TaskRepetition.fromDb(2), TaskRepetition.weekly);
+      // A value written by a future version of the app must not crash.
+      expect(TaskRepetition.fromDb(99), TaskRepetition.daily);
+    });
   });
 
-  test('a task can be created as critical', () async {
-    await dao.createTask(title: 'Tarea', importance: TaskImportance.critical);
+  group('completion log', () {
+    test('every completion is stored as its own row', () async {
+      final id = await createTask();
 
-    final tasks = await dao.loadTasksWithStreaks();
-    expect(tasks.first.task.importance, TaskImportance.critical);
-    expect(tasks.first.task.importance.repeats, isTrue);
+      await dao.toggleCompletion(id, daysAgo(3));
+      await dao.toggleCompletion(id, daysAgo(2));
+      await dao.toggleCompletion(id, daysAgo(1));
+
+      final rows = await db.select(db.completions).get();
+      expect(rows, hasLength(3));
+      expect(
+        rows.map((r) => r.day).toSet(),
+        {
+          TaskDao.dayKey(daysAgo(3)),
+          TaskDao.dayKey(daysAgo(2)),
+          TaskDao.dayKey(daysAgo(1)),
+        },
+      );
+      // Each row also knows when it was written.
+      expect(rows.every((r) => r.completedAt.year > 2000), isTrue);
+    });
+
+    test('the log is the source of the streak figures', () async {
+      final id = await createTask();
+      await dao.toggleCompletion(id, daysAgo(1));
+      await dao.toggleCompletion(id, daysAgo(0));
+
+      final tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.totalCompletions, 2);
+      expect(tasks.first.currentStreak, 2);
+      expect(tasks.first.completedCycles, hasLength(2));
+    });
   });
 
-  test('the importance of a task can be changed', () async {
-    final id = await dao.createTask(title: 'Tarea');
+  group('importance', () {
+    test('a new task defaults to normal importance', () async {
+      await createTask();
 
-    await dao.updateImportance(id, TaskImportance.critical);
-    var tasks = await dao.loadTasksWithStreaks();
-    expect(tasks.first.task.importance, TaskImportance.critical);
+      final tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.importance, TaskImportance.normal);
+      expect(tasks.first.task.importance.repeats, isFalse);
+    });
 
-    await dao.updateImportance(id, TaskImportance.normal);
-    tasks = await dao.loadTasksWithStreaks();
-    expect(tasks.first.task.importance, TaskImportance.normal);
-  });
+    test('a task can be created as critical', () async {
+      await createTask(importance: TaskImportance.critical);
 
-  test('importance is stored as a stable integer, not an enum index', () async {
-    final id = await dao.createTask(
-      title: 'Tarea',
-      importance: TaskImportance.critical,
-    );
+      final tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.importance, TaskImportance.critical);
+      expect(tasks.first.task.importance.repeats, isTrue);
+    });
 
-    // Read the raw column, bypassing the converter.
-    final raw = await db
-        .customSelect(
-          'SELECT importance FROM streak_tasks WHERE id = ?',
-          variables: [Variable.withInt(id)],
-        )
-        .getSingle();
+    test('the importance of a task can be changed', () async {
+      final id = await createTask();
 
-    expect(raw.read<int>('importance'), TaskImportance.critical.dbValue);
-  });
+      await dao.updateImportance(id, TaskImportance.critical);
+      var tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.importance, TaskImportance.critical);
 
-  test('an unknown stored importance falls back to normal', () {
-    expect(TaskImportance.fromDb(0), TaskImportance.normal);
-    expect(TaskImportance.fromDb(1), TaskImportance.critical);
-    expect(TaskImportance.fromDb(2), TaskImportance.important);
-    // A value written by a future version of the app must not crash.
-    expect(TaskImportance.fromDb(99), TaskImportance.normal);
-  });
+      await dao.updateImportance(id, TaskImportance.normal);
+      tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.importance, TaskImportance.normal);
+    });
 
-  test('the stored values of the levels never change', () {
-    // A task stored before the `important` level existed keeps its meaning:
-    // 0 has always been normal and 1 has always been critical.
-    expect(TaskImportance.normal.dbValue, 0);
-    expect(TaskImportance.critical.dbValue, 1);
-    expect(TaskImportance.important.dbValue, 2);
-  });
+    test('importance is stored as a stable integer, not an enum index', () async {
+      final id = await createTask(importance: TaskImportance.critical);
 
-  test('a task stored as critical is still critical', () async {
-    // Simulates a row written before the `important` level was added.
-    final id = await dao.createTask(title: 'Tarea');
-    await db.customStatement(
-      'UPDATE streak_tasks SET importance = 1 WHERE id = $id',
-    );
+      // Read the raw column, bypassing the converter.
+      final raw = await db
+          .customSelect(
+            'SELECT importance FROM streak_tasks WHERE id = ?',
+            variables: [Variable.withInt(id)],
+          )
+          .getSingle();
 
-    final tasks = await dao.loadTasksWithStreaks();
-    expect(tasks.first.task.importance, TaskImportance.critical);
+      expect(raw.read<int>('importance'), TaskImportance.critical.dbValue);
+    });
+
+    test('an unknown stored importance falls back to normal', () {
+      expect(TaskImportance.fromDb(0), TaskImportance.normal);
+      expect(TaskImportance.fromDb(1), TaskImportance.critical);
+      expect(TaskImportance.fromDb(2), TaskImportance.important);
+      // A value written by a future version of the app must not crash.
+      expect(TaskImportance.fromDb(99), TaskImportance.normal);
+    });
+
+    test('the stored values of the levels never change', () {
+      // A task stored before the `important` level existed keeps its meaning:
+      // 0 has always been normal and 1 has always been critical.
+      expect(TaskImportance.normal.dbValue, 0);
+      expect(TaskImportance.critical.dbValue, 1);
+      expect(TaskImportance.important.dbValue, 2);
+    });
+
+    test('a task stored as critical is still critical', () async {
+      // Simulates a row written before the `important` level was added.
+      final id = await createTask();
+      await db.customStatement(
+        'UPDATE streak_tasks SET importance = 1 WHERE id = $id',
+      );
+
+      final tasks = await dao.loadTasksWithStreaks();
+      expect(tasks.first.task.importance, TaskImportance.critical);
+    });
   });
 }

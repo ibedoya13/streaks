@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/task_dao.dart';
 import '../data/task_importance.dart';
+import '../data/task_repetition.dart';
 import '../theme.dart';
 import 'flame_logo.dart';
 import 'importance_visuals.dart';
@@ -102,29 +103,49 @@ class TaskCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (task.reminderHour != null)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.notifications_active_outlined,
-                                size: 14,
-                                color: scheme.onSurface.withValues(alpha: 0.5),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.notifications_active_outlined,
+                              size: 14,
+                              color: scheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatTime(
+                                task.reminderHour,
+                                task.reminderMinute,
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatTime(
-                                  task.reminderHour!,
-                                  task.reminderMinute!,
-                                ),
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: scheme.onSurface.withValues(
-                                    alpha: 0.5,
-                                  ),
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: scheme.onSurface.withValues(
+                                  alpha: 0.5,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              task.repetition == TaskRepetition.daily
+                                  ? Icons.today_outlined
+                                  : Icons.event_repeat_outlined,
+                              size: 14,
+                              color: scheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              task.repetition.label,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: scheme.onSurface.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ],
