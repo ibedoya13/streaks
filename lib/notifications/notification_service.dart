@@ -25,7 +25,11 @@ class NotificationService {
   ///
   /// Every repeating level covers the same window, so a critical task
   /// simply asks for more reminders inside it than an important one.
-  static const Duration coverageWindow = Duration(hours: 2);
+  ///
+  /// One hour is enough: someone who ignored a dozen reminders was never
+  /// going to attend to the task, and every pending alarm costs the
+  /// device.
+  static const Duration coverageWindow = Duration(hours: 1);
 
   /// How many notifications a task of the given importance gets scheduled.
   ///
@@ -270,11 +274,32 @@ class NotificationService {
       };
 
   /// Cancels every reminder scheduled for a task.
+  ///
+  /// The slots to cancel are not only the ones this version would schedule.
+  /// Shortening the coverage window or the interval reduces the number of
+  /// reminders of a task, and the alarms of the slots that fall outside the
+  /// new count would stay scheduled forever. Cancelling what the operating
+  /// system actually holds covers that, and the current slots are added on
+  /// top in case the pending list is not up to date.
   Future<void> cancelTask(int taskId) async {
     await initialize();
 
+    final first = taskId * idStride;
+    final ids = <int>{};
+
+    final pending = await _plugin.pendingNotificationRequests();
+    for (final request in pending) {
+      if (request.id >= first && request.id < first + idStride) {
+        ids.add(request.id);
+      }
+    }
+
     for (var slot = 0; slot < maxRepeatCount; slot++) {
-      await _plugin.cancel(id: taskId * idStride + slot);
+      ids.add(first + slot);
+    }
+
+    for (final id in ids) {
+      await _plugin.cancel(id: id);
     }
   }
 

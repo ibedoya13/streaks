@@ -66,8 +66,19 @@ class _FakeNotificationService extends NotificationService {
 
   @override
   Future<void> cancelTask(int taskId) async {
+    final first = taskId * NotificationService.idStride;
+    final ids = <int>{};
+
+    for (final id in pendingIds) {
+      if (id >= first && id < first + NotificationService.idStride) {
+        ids.add(id);
+      }
+    }
     for (var slot = 0; slot < NotificationService.maxRepeatCount; slot++) {
-      final id = taskId * NotificationService.idStride + slot;
+      ids.add(first + slot);
+    }
+
+    for (final id in ids) {
       cancelled.add(id);
       pendingIds.remove(id);
     }
@@ -109,7 +120,7 @@ void main() {
     expect(service.scheduled, hasLength(1));
   });
 
-  test('a critical task repeats every ten minutes', () async {
+  test('a critical task repeats every five minutes', () async {
     await dao.createTask(
       title: 'Tarea',
       importance: TaskImportance.critical,
@@ -121,7 +132,7 @@ void main() {
 
     expect(
       TaskImportance.critical.reminderInterval,
-      const Duration(minutes: 10),
+      const Duration(minutes: 5),
     );
     expect(
       service.scheduled,
@@ -129,7 +140,7 @@ void main() {
     );
   });
 
-  test('an important task repeats every thirty minutes', () async {
+  test('an important task repeats every fifteen minutes', () async {
     await dao.createTask(
       title: 'Tarea',
       importance: TaskImportance.important,
@@ -141,7 +152,7 @@ void main() {
 
     expect(
       TaskImportance.important.reminderInterval,
-      const Duration(minutes: 30),
+      const Duration(minutes: 15),
     );
     expect(
       service.scheduled,
@@ -162,6 +173,40 @@ void main() {
           NotificationService.repeatCountFor(TaskImportance.critical),
     );
   });
+
+  test('the number of reminders of each level is the expected one', () async {
+    // The coverage window is one hour, so a shorter interval means more
+    // reminders inside it.
+    expect(NotificationService.coverageWindow, const Duration(hours: 1));
+    expect(NotificationService.repeatCountFor(TaskImportance.critical), 12);
+    expect(NotificationService.repeatCountFor(TaskImportance.important), 4);
+    expect(NotificationService.repeatCountFor(TaskImportance.normal), 1);
+
+    // The ids of the slots must not overlap, or two reminders of the same
+    // task would cancel each other.
+    expect(
+      NotificationService.maxRepeatCount,
+      lessThan(NotificationService.idStride),
+    );
+  });
+
+  test(
+    'cancelling a task also cancels the slots of a previous release',
+    () async {
+      // A release that used a wider window scheduled more slots than this
+      // one does. Those alarms have to be cancelled too, or they keep firing.
+      final leftovers = [
+        for (var slot = NotificationService.maxRepeatCount; slot < 24; slot++)
+          7 * NotificationService.idStride + slot,
+      ];
+      service.pendingIds.addAll(leftovers);
+      expect(service.pendingIds, hasLength(leftovers.length));
+
+      await service.cancelTask(7);
+
+      expect(service.pendingIds, isEmpty);
+    },
+  );
 
   test('a normal task does not repeat', () async {
     expect(TaskImportance.normal.reminderInterval, isNull);

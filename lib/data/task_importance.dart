@@ -22,7 +22,7 @@ enum TaskImportance {
     dbValue: 2,
     label: 'Importante',
     description: 'Avisos repetidos hasta completarlo',
-    reminderInterval: Duration(minutes: 30),
+    reminderInterval: Duration(minutes: 15),
   ),
 
   /// A task that must not be missed. Its reminders escalate and repeat
@@ -31,7 +31,7 @@ enum TaskImportance {
     dbValue: 1,
     label: 'Crítico',
     description: 'Avisos repetidos hasta completarlo',
-    reminderInterval: Duration(minutes: 10),
+    reminderInterval: Duration(minutes: 5),
   );
 
   const TaskImportance({

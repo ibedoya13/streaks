@@ -109,23 +109,23 @@ class TaskDao {
   /// group into cycles.
   Selectable<QueryRow> _tasksWithCompletions() {
     const sql = '''
-SELECT
-  t.id AS id,
-  t.title AS title,
-  t.description AS description,
-  t.importance AS importance,
-  t.repetition AS repetition,
-  t.reminder_hour AS reminder_hour,
-  t.reminder_minute AS reminder_minute,
-  t.created_at AS created_at,
-  t.is_archived AS is_archived,
-  t.sort_order AS sort_order,
-  c.day AS day
-FROM streak_tasks t
-LEFT JOIN completions c ON c.task_id = t.id
-WHERE t.is_archived = 0
-ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
-''';
+      SELECT
+        t.id AS id,
+        t.title AS title,
+        t.description AS description,
+        t.importance AS importance,
+        t.repetition AS repetition,
+        t.reminder_hour AS reminder_hour,
+        t.reminder_minute AS reminder_minute,
+        t.created_at AS created_at,
+        t.is_archived AS is_archived,
+        t.sort_order AS sort_order,
+        c.day AS day
+      FROM streak_tasks t
+      LEFT JOIN completions c ON c.task_id = t.id
+      WHERE t.is_archived = 0
+      ORDER BY t.sort_order ASC, t.id ASC, c.day ASC
+    ''';
 
     return db.customSelect(sql, readsFrom: {db.streakTasks, db.completions});
   }
