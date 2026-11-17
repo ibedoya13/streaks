@@ -8,15 +8,18 @@ class TaskCard extends StatelessWidget {
   const TaskCard({
     super.key,
     required this.entry,
-    required this.onToggle,
     required this.onOpenDetail,
+    this.onToggle,
     this.dueLabel,
   });
 
   final TaskWithStreaks entry;
 
   /// Swiping the card to the right marks the task as completed.
-  final VoidCallback onToggle;
+  ///
+  /// It is null for the tasks that do not come due today: those only open
+  /// their detail view, they cannot be completed from the list.
+  final VoidCallback? onToggle;
 
   /// Swiping the card to the left opens the detail view.
   final VoidCallback onOpenDetail;
@@ -36,10 +39,13 @@ class TaskCard extends StatelessWidget {
     // in `confirmDismiss` and the card springs back to its place.
     return Dismissible(
       key: ValueKey('task-${task.id}'),
-      direction: DismissDirection.horizontal,
+      // A task that does not come due today only opens its detail view.
+      direction: onToggle == null
+          ? DismissDirection.endToStart
+          : DismissDirection.horizontal,
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          onToggle();
+          onToggle?.call();
         } else {
           onOpenDetail();
         }

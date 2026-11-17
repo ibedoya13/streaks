@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'data/database.dart';
 import 'screens/home_screen.dart';
@@ -19,6 +20,16 @@ class StreaksApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: StreaksTheme.light(),
       darkTheme: StreaksTheme.dark(),
+      builder: (context, child) {
+        // The system bars follow the brightness of the theme, whatever the
+        // screen shows.
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: StreaksTheme.systemOverlayStyleFor(
+            Theme.of(context).brightness,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const _DatabaseScope(),
     );
   }

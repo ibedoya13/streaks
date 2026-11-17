@@ -55,7 +55,7 @@ void main() {
         home: Scaffold(
           body: TaskCard(
             entry: entry,
-            onToggle: onToggle ?? () {},
+            onToggle: onToggle,
             onOpenDetail: onOpenDetail ?? () {},
           ),
         ),
@@ -79,6 +79,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(toggled, 1);
+  });
+
+  testWidgets('a task that does not come due today cannot be completed', (
+    tester,
+  ) async {
+    var toggled = 0;
+    var opened = 0;
+    await pumpCard(
+      tester,
+      entry: _entry(),
+      onToggle: null,
+      onOpenDetail: () => opened++,
+    );
+
+    // The card only listens to the swipe to the left.
+    await tester.fling(find.byType(TaskCard), const Offset(600, 0), 1000);
+    await tester.pumpAndSettle();
+
+    expect(toggled, 0);
+    expect(opened, 0);
+    expect(find.byType(TaskCard), findsOneWidget);
   });
 
   testWidgets('swiping to the left opens the detail view', (tester) async {

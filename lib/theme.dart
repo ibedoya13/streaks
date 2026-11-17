@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Visual identity for the Streaks app.
 ///
@@ -21,6 +22,27 @@ class StreaksTheme {
 
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
+
+  /// How the status bar and the navigation bar have to be painted.
+  ///
+  /// The surfaces of the app are cream in light mode and very dark in dark
+  /// mode, so the icons of the system bars have to be dark in the first
+  /// case and light in the second. Without this they end up white on a
+  /// cream background, where they cannot be read.
+  static SystemUiOverlayStyle systemOverlayStyleFor(Brightness brightness) {
+    final isLight = brightness == Brightness.light;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
+      statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: isLight
+          ? Brightness.dark
+          : Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false,
+    );
+  }
 
   static ThemeData _build(Brightness brightness) {
     final isLight = brightness == Brightness.light;
@@ -82,6 +104,10 @@ class StreaksTheme {
         foregroundColor: scheme.onSurface,
         elevation: 0,
         centerTitle: false,
+        // The app bar is transparent, so Flutter would pick the system bar
+        // icons from the foreground colour and leave them white on the
+        // cream surface. They have to follow the brightness instead.
+        systemOverlayStyle: systemOverlayStyleFor(brightness),
         titleTextStyle: TextStyle(
           color: scheme.onSurface,
           fontSize: 26,

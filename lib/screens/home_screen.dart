@@ -151,11 +151,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Builds the card of a task.
+  ///
+  /// Only the tasks of today can be completed with a swipe: the ones of the
+  /// coming days do not come due yet, so they only open their detail view.
   Widget _card(TaskWithStreaks entry, {String? dueLabel}) {
     return TaskCard(
       entry: entry,
       dueLabel: dueLabel,
-      onToggle: () => _toggleTask(entry.task.id),
+      onToggle: entry.isForToday ? () => _toggleTask(entry.task.id) : null,
       onOpenDetail: () => _openDetail(entry),
     );
   }
